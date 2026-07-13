@@ -128,7 +128,7 @@
 
   <section class="card">
     <h2>审计日志（rsyslog 外发）</h2>
-    <p class="card-hint">系统会记录每位用户的目录访问、下载、上传、删除等操作，
+    <p class="card-hint">系统会记录每位用户的文件下载、上传与删除操作，
       管理员可在 <a href="/console/audit">审计日志页面</a> 查询。
       开启外发后，审计事件将以 syslog 协议（RFC 3164，消息体为 JSON）实时发送到 rsyslog 服务器。</p>
     <form method="post" action="/console/syslog" id="form-syslog">

@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xiaoxin2016/goweb/internal/audit"
 	"github.com/xiaoxin2016/goweb/internal/auth"
 	"github.com/xiaoxin2016/goweb/internal/mailer"
 )
@@ -92,11 +91,9 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.codes.Verify(email, req.Code); err != nil {
-		s.audit.Log(audit.Event{User: email, Action: "login-fail", IP: clientIP(r), Result: err.Error()})
 		writeErr(w, http.StatusUnauthorized, err)
 		return
 	}
-	s.audit.Log(audit.Event{User: email, Action: "login", IP: clientIP(r)})
 
 	ttl := time.Duration(cfg.SessionDurationHours()) * time.Hour
 	token := auth.SignToken(s.cfg.Secret(), email, ttl)

@@ -45,6 +45,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	var uploaded []string
+	var pendingPath string // 文件前置的 path 字段：含子目录的相对路径（文件夹上传）
 	for {
 		part, err := mr.NextPart()
 		if errors.Is(err, io.EOF) {
@@ -54,11 +55,21 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, fmt.Errorf("读取上传内容失败: %w", err))
 			return
 		}
+		if part.FormName() == "path" && part.FileName() == "" {
+			raw, _ := io.ReadAll(io.LimitReader(part, 4096))
+			part.Close()
+			pendingPath = strings.ReplaceAll(strings.TrimSpace(string(raw)), `\`, "/")
+			continue
+		}
 		if part.FormName() != "file" || part.FileName() == "" {
 			part.Close()
 			continue
 		}
-		name := path.Base(part.FileName())
+		name := pendingPath
+		pendingPath = ""
+		if name == "" {
+			name = path.Base(part.FileName())
+		}
 		rel, err := cleanFile(dir + name)
 		if err != nil {
 			part.Close()
@@ -200,7 +211,6 @@ func (s *Server) handleMkdir(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := opCtx(r)
 	defer cancel()
 	err = cli.Mkdir(ctx, dir+name+"/")
-	s.auditLog(r, "mkdir", "/"+dir+name+"/", err)
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err)
 		return

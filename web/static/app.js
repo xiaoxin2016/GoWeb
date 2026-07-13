@@ -28,16 +28,27 @@
   };
 
   // ---- 上传 ----
+  // items: [{ file: File, rel: '相对路径（可含子目录）' }]
   const fileInput = $('file-input');
   $('btn-upload').addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', () => {
-    if (fileInput.files.length) uploadFiles(fileInput.files);
+    if (fileInput.files.length) {
+      uploadItems([...fileInput.files].map((f) => ({ file: f, rel: f.name })));
+      fileInput.value = '';
+    }
   });
 
-  function uploadFiles(files) {
+  function uploadItems(items) {
+    if (!items.length) {
+      toast('没有可上传的文件', true);
+      return;
+    }
     const fd = new FormData();
-    let total = 0;
-    for (const f of files) { fd.append('file', f); total += f.size; }
+    for (const it of items) {
+      // 每个文件前发送一个 path 字段，携带含子目录的相对路径
+      fd.append('path', it.rel);
+      fd.append('file', it.file, it.file.name);
+    }
 
     const box = $('upload-progress');
     const fill = $('progress-fill');
@@ -51,7 +62,7 @@
       if (e.lengthComputable) {
         const pct = Math.round((e.loaded / e.total) * 100);
         fill.style.width = pct + '%';
-        text.textContent = '上传中 ' + pct + '%（共 ' + files.length + ' 个文件）';
+        text.textContent = '上传中 ' + pct + '%（共 ' + items.length + ' 个文件）';
       }
     };
     xhr.onload = () => {
@@ -73,7 +84,59 @@
     xhr.send(fd);
   }
 
-  // ---- 拖拽上传 ----
+  // ---- 拖拽上传（支持文件夹：递归遍历目录树，保留相对路径）----
+  // walkEntry 遍历 FileSystemEntry，把文件收集为 {file, rel}
+  function walkEntry(entry, prefix, out) {
+    return new Promise((resolve) => {
+      if (entry.isFile) {
+        entry.file(
+          (f) => { out.push({ file: f, rel: prefix + entry.name }); resolve(); },
+          () => resolve() // 读取失败的条目跳过
+        );
+      } else if (entry.isDirectory) {
+        const reader = entry.createReader();
+        const readBatch = () => {
+          // readEntries 每次最多返回约 100 条，必须循环调用直到为空
+          reader.readEntries(async (ents) => {
+            if (!ents.length) { resolve(); return; }
+            for (const e of ents) {
+              await walkEntry(e, prefix + entry.name + '/', out);
+            }
+            readBatch();
+          }, () => resolve());
+        };
+        readBatch();
+      } else {
+        resolve();
+      }
+    });
+  }
+
+  async function collectDropped(dataTransfer) {
+    const out = [];
+    const entries = [];
+    for (const item of dataTransfer.items || []) {
+      if (item.kind !== 'file') continue;
+      const entry = item.webkitGetAsEntry && item.webkitGetAsEntry();
+      if (entry) {
+        entries.push(entry);
+      } else {
+        const f = item.getAsFile();
+        if (f) out.push({ file: f, rel: f.name });
+      }
+    }
+    // 注意：webkitGetAsEntry 必须在 drop 事件同步阶段全部取出，
+    // 之后再异步遍历目录内容
+    for (const entry of entries) {
+      await walkEntry(entry, '', out);
+    }
+    // 不支持 entry API 的旧浏览器回退到 files 列表（仅普通文件）
+    if (!out.length && dataTransfer.files.length) {
+      for (const f of dataTransfer.files) out.push({ file: f, rel: f.name });
+    }
+    return out;
+  }
+
   let dragDepth = 0;
   document.addEventListener('dragenter', (e) => {
     e.preventDefault();
@@ -87,11 +150,12 @@
     if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('dragging'); }
   });
   document.addEventListener('dragover', (e) => e.preventDefault());
-  document.addEventListener('drop', (e) => {
+  document.addEventListener('drop', async (e) => {
     e.preventDefault();
     dragDepth = 0;
     document.body.classList.remove('dragging');
-    if (e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files);
+    const items = await collectDropped(e.dataTransfer);
+    if (items.length) uploadItems(items);
   });
 
   // ---- 新建文件夹 ----

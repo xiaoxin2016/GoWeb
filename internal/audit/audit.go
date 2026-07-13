@@ -21,7 +21,7 @@ import (
 type Event struct {
 	Time   time.Time `json:"time"`
 	User   string    `json:"user"`
-	Action string    `json:"action"` // login | access | download | upload | mkdir | delete
+	Action string    `json:"action"` // download | upload | delete
 	Path   string    `json:"path"`   // 操作对象（目录或文件的相对路径）
 	IP     string    `json:"ip"`
 	Result string    `json:"result"` // "ok" 或错误描述
