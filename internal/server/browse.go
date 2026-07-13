@@ -39,7 +39,7 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 	data := browseData{
 		Title:    cfg.Title,
 		Dir:      dir,
-		Crumbs:   buildCrumbs(dir),
+		Crumbs:   buildCrumbs(cfg.Title, dir),
 		User:     email,
 		IsAdmin:  cfg.IsAdmin(email),
 		RootName: cfg.Title,
@@ -58,8 +58,9 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "browse.html", data)
 }
 
-func buildCrumbs(dir string) []Crumb {
-	crumbs := []Crumb{{Name: "根目录", URL: "/files/"}}
+// buildCrumbs 构造面包屑：根节点显示站点名称，其后是各级子目录。
+func buildCrumbs(rootName, dir string) []Crumb {
+	crumbs := []Crumb{{Name: rootName, URL: "/files/"}}
 	if dir == "" {
 		return crumbs
 	}
