@@ -70,44 +70,9 @@ GOWEB_LISTEN=:8080 GOWEB_DATA_DIR=/opt/goweb/data ./goweb
 
 ### 4. 配置 systemd 常驻服务
 
-创建专用运行账户并写入服务单元：
-
-```bash
-sudo useradd --system --no-create-home --shell /usr/sbin/nologin goweb
-sudo chown -R goweb:goweb /opt/goweb/data
-
-sudo tee /etc/systemd/system/goweb.service > /dev/null <<'EOF'
-[Unit]
-Description=GoWeb S3/OSS 目录浏览
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=goweb
-Group=goweb
-WorkingDirectory=/opt/goweb
-Environment=GOWEB_LISTEN=:8080
-Environment=GOWEB_DATA_DIR=/opt/goweb/data
-ExecStart=/opt/goweb/goweb
-Restart=on-failure
-RestartSec=3
-
-# 安全加固（可选）
-NoNewPrivileges=true
-ProtectSystem=strict
-ReadWritePaths=/opt/goweb/data
-PrivateTmp=true
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable --now goweb
-sudo systemctl status goweb          # 查看运行状态
-journalctl -u goweb -f               # 跟踪日志
-```
+参见 README 中的[「配置 systemd 常驻服务」](../README.md#配置-systemd-常驻服务)一节
+（以 `nobody` 用户运行，在线与离线部署通用）。离线环境注意提前把 README
+一并带入，或将该节内容打印/抄录到部署手册中。
 
 ---
 

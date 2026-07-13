@@ -43,6 +43,47 @@ go build -o goweb .
 依次配置对象存储、SMTP，并在「登录权限」中填入管理员邮箱。保存管理员邮箱后系统即启用鉴权，
 之后所有页面都需要邮箱验证码登录，控制台仅管理员可见。
 
+### 配置 systemd 常驻服务
+
+生产环境建议用 systemd 常驻运行（在线与离线部署均适用），以 `nobody` 用户运行：
+
+```bash
+sudo mkdir -p /opt/goweb/data
+sudo cp goweb /opt/goweb/goweb && sudo chmod +x /opt/goweb/goweb
+sudo chown -R nobody /opt/goweb/data
+
+sudo tee /etc/systemd/system/goweb.service > /dev/null <<'EOF'
+[Unit]
+Description=GoWeb S3/OSS 目录浏览
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nobody
+WorkingDirectory=/opt/goweb
+Environment=GOWEB_LISTEN=:8080
+Environment=GOWEB_DATA_DIR=/opt/goweb/data
+ExecStart=/opt/goweb/goweb
+Restart=on-failure
+RestartSec=3
+
+# 安全加固（可选）
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/goweb/data
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now goweb
+sudo systemctl status goweb          # 查看运行状态
+journalctl -u goweb -f               # 跟踪日志
+```
+
 ### Docker
 
 ```bash

@@ -21,6 +21,13 @@ func opCtx(r *http.Request) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(r.Context(), 30*time.Minute)
 }
 
+// uploadErr 上传中途出错时先排空剩余请求体再返回错误。
+// 否则连接被立即关闭，浏览器只会看到“网络错误”而非真正的错误信息。
+func uploadErr(w http.ResponseWriter, r *http.Request, status int, err error) {
+	io.Copy(io.Discard, io.LimitReader(r.Body, 256<<20))
+	writeErr(w, status, err)
+}
+
 // handleUpload 处理文件上传（multipart 流式转发到 S3，不落盘）。
 // 目录通过查询参数 dir 指定；支持一次上传多个文件。
 func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
@@ -37,7 +44,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	mr, err := r.MultipartReader()
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, fmt.Errorf("解析上传内容失败: %w", err))
+		uploadErr(w, r, http.StatusBadRequest, fmt.Errorf("解析上传内容失败: %w", err))
 		return
 	}
 
@@ -52,7 +59,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		if err != nil {
-			writeErr(w, http.StatusBadRequest, fmt.Errorf("读取上传内容失败: %w", err))
+			uploadErr(w, r, http.StatusBadRequest, fmt.Errorf("读取上传内容失败: %w", err))
 			return
 		}
 		if part.FormName() == "path" && part.FileName() == "" {
@@ -73,13 +80,13 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		rel, err := cleanFile(dir + name)
 		if err != nil {
 			part.Close()
-			writeErr(w, http.StatusBadRequest, fmt.Errorf("文件名 %q 非法", name))
+			uploadErr(w, r, http.StatusBadRequest, fmt.Errorf("文件名 %q 非法", name))
 			return
 		}
 		if err := cli.Upload(ctx, rel, part); err != nil {
 			part.Close()
 			s.auditLog(r, "upload", "/"+rel, err)
-			writeErr(w, http.StatusBadGateway, fmt.Errorf("上传 %s 失败: %w", name, err))
+			uploadErr(w, r, http.StatusBadGateway, fmt.Errorf("上传 %s 失败: %w", name, err))
 			return
 		}
 		part.Close()

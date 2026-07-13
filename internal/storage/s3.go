@@ -162,7 +162,12 @@ func (c *Client) Upload(ctx context.Context, rel string, body io.Reader) error {
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
-	uploader := manager.NewUploader(c.api)
+	uploader := manager.NewUploader(c.api, func(u *manager.Uploader) {
+		// Uploader 有独立于 S3 客户端的校验和开关，默认 WhenSupported 会给
+		// UploadPart 附加 CRC32 尾部校验和（aws-chunked 编码），阿里云 OSS 等
+		// 第三方实现不支持，报 InvalidArgument；必须在此单独关闭
+		u.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
+	})
 	_, err := uploader.Upload(ctx, &s3.PutObjectInput{
 		Bucket:      aws.String(c.bucket),
 		Key:         aws.String(c.key(rel)),
