@@ -1,0 +1,87 @@
+# GoWeb — S3/OSS 目录浏览
+
+一个使用 Go 编写的对象存储目录浏览系统，界面风格参考 [h5ai](https://github.com/lrsjng/h5ai/)。
+可以浏览 S3 兼容对象存储（AWS S3、阿里云 OSS、腾讯云 COS、MinIO 等）中某个指定文件夹下的
+全部目录和文件，并提供上传、下载、删除等基础功能。
+
+## 功能
+
+- **目录浏览**：h5ai 风格的文件列表（图标、大小、修改时间、面包屑导航），文件夹优先排序，
+  支持深色模式，仅浏览配置的根前缀（文件夹）内的内容
+- **文件操作**：
+  - 上传：按钮选择或拖拽到页面，多文件、带进度条，服务端流式转发不落盘，大文件自动分片
+  - 下载：服务端流式代理，无需暴露存储凭证或桶权限
+  - 删除：单个删除或勾选批量删除，文件夹递归删除
+  - 新建文件夹
+- **邮件验证码登录**：无密码，输入邮箱 → 收取 6 位验证码 → 登录；
+  验证码 10 分钟有效、一次性、限制重发频率与尝试次数；会话为 HMAC 签名令牌
+- **控制台**（仅管理员）：
+  - 对象存储配置：Endpoint、Region、AK/SK、Bucket、根目录前缀、Path-Style 寻址，可在线测试连接
+  - SMTP 配置：服务器、端口、加密方式（SSL / STARTTLS / 无）、账号密码、发件人，可发送测试邮件
+  - 登录权限：管理员邮箱、允许登录的邮箱（支持 `*@example.com` 通配）、会话有效期
+
+## 快速开始
+
+```bash
+go build -o goweb .
+./goweb
+```
+
+默认监听 `:8080`，数据（配置文件、签名密钥）保存在 `./data/` 目录。
+
+**首次运行**处于「初始化模式」：访问 `http://localhost:8080/console`（此时无需登录），
+依次配置对象存储、SMTP，并在「登录权限」中填入管理员邮箱。保存管理员邮箱后系统即启用鉴权，
+之后所有页面都需要邮箱验证码登录，控制台仅管理员可见。
+
+### Docker
+
+```bash
+docker build -t goweb .
+docker run -d -p 8080:8080 -v goweb-data:/app/data goweb
+```
+
+### 环境变量
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `GOWEB_LISTEN` | `:8080` | 监听地址 |
+| `GOWEB_DATA_DIR` | `data` | 数据目录（配置与密钥） |
+| `GOWEB_DEBUG_CODE` | 关闭 | 设为 `1` 时，邮件发送失败会把验证码打印到日志（仅供调试，生产环境勿开） |
+
+### 常见对象存储配置示例
+
+| 服务 | Endpoint | Path-Style |
+|---|---|---|
+| AWS S3 | 留空（填写 Region 即可） | 否 |
+| 阿里云 OSS | `https://oss-cn-hangzhou.aliyuncs.com` | 否 |
+| 腾讯云 COS | `https://cos.ap-guangzhou.myqcloud.com` | 否 |
+| MinIO | `http://your-minio:9000` | 是 |
+
+## 项目结构
+
+```
+main.go                 入口
+internal/config/        配置加载/保存（data/config.json，控制台在线修改）
+internal/auth/          邮箱验证码与会话令牌
+internal/mailer/        SMTP 邮件发送
+internal/storage/       S3 兼容存储的列目录/上传/下载/删除
+internal/server/        HTTP 路由、鉴权中间件与各页面/接口处理
+web/                    内嵌的模板与静态资源（html/template + 原生 JS）
+```
+
+## 测试
+
+```bash
+go test ./...
+```
+
+存储层使用 [gofakes3](https://github.com/johannesboyne/gofakes3) 内存 S3 服务做端到端测试，
+覆盖列目录、上传、下载、递归删除与根前缀隔离。
+
+## 安全说明
+
+- 所有文件操作接口都要求登录，路径经过校验（拒绝 `..`、空段等），并被限制在配置的根前缀内
+- 未登录用户请求验证码时返回统一提示，不泄露邮箱是否在允许名单中
+- 会话 Cookie 为 `HttpOnly` + `SameSite=Lax`；HTTPS 下自动携带 `Secure` 标记（建议生产环境置于
+  反向代理后启用 HTTPS）
+- AK/SK 与 SMTP 密码保存在服务端 `data/config.json`（权限 0600），控制台页面不回显密文

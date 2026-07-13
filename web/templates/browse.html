@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · /{{.Dir}}</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%234a90d9' d='M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z'/%3E%3C/svg%3E">
+</head>
+<body>
+<header class="topbar">
+  <nav class="crumbs">
+    {{range $i, $c := .Crumbs}}{{if $i}}<span class="sep">›</span>{{end}}<a href="{{$c.URL}}">{{$c.Name}}</a>{{end}}
+  </nav>
+  <div class="topbar-right">
+    {{if .IsAdmin}}<a class="btn btn-ghost" href="/console">控制台</a>{{end}}
+    <span class="user-email" title="当前登录用户">{{.User}}</span>
+    <form method="post" action="/api/auth/logout" class="inline-form">
+      <button class="btn btn-ghost" type="submit">退出</button>
+    </form>
+  </div>
+</header>
+
+<main class="content" id="drop-zone" data-dir="{{.Dir}}">
+  <div class="toolbar">
+    <button class="btn btn-primary" id="btn-upload">
+      <svg viewBox="0 0 24 24"><path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/></svg>上传文件
+    </button>
+    <button class="btn" id="btn-mkdir">
+      <svg viewBox="0 0 24 24"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-1 8h-3v3h-2v-3h-3v-2h3V9h2v3h3v2z"/></svg>新建文件夹
+    </button>
+    <button class="btn btn-danger hidden" id="btn-del-selected">删除选中</button>
+    <input type="file" id="file-input" multiple hidden>
+    <div class="upload-progress hidden" id="upload-progress">
+      <div class="bar"><div class="fill" id="progress-fill"></div></div>
+      <span id="progress-text"></span>
+    </div>
+  </div>
+
+  {{if .LoadErr}}
+  <div class="notice notice-err">
+    <strong>无法读取目录：</strong>{{.LoadErr}}
+    {{if .IsAdmin}}<a href="/console">前往控制台检查配置 →</a>{{end}}
+  </div>
+  {{else}}
+  <table class="listing">
+    <thead>
+      <tr>
+        <th class="col-check"><input type="checkbox" id="check-all" title="全选"></th>
+        <th class="col-name">名称</th>
+        <th class="col-time">修改时间</th>
+        <th class="col-size">大小</th>
+        <th class="col-actions"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {{if .Dir}}
+      <tr class="row-up">
+        <td></td>
+        <td class="col-name">
+          <a href="../" class="entry-link">
+            <svg class="icon icon-up" viewBox="0 0 24 24"><path d="M11 9l1.42 1.42L8.83 14H18V4h2v12H8.83l3.59 3.58L11 21l-6-6 6-6z" transform="rotate(180 12 12)"/></svg>
+            <span>..</span>
+          </a>
+        </td>
+        <td class="col-time">—</td><td class="col-size">—</td><td></td>
+      </tr>
+      {{end}}
+      {{range .Entries}}
+      <tr data-path="{{.Path}}" data-dir="{{if .IsDir}}1{{end}}">
+        <td class="col-check"><input type="checkbox" class="row-check"></td>
+        <td class="col-name">
+          {{if .IsDir}}
+          <a href="/files/{{.Path}}" class="entry-link">
+            <svg class="icon icon-folder" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+            <span>{{.Name}}</span>
+          </a>
+          {{else}}
+          <a href="/api/download?path={{.Path}}" class="entry-link" title="点击下载">
+            <svg class="icon icon-file" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>
+            <span>{{.Name}}</span>
+          </a>
+          {{end}}
+        </td>
+        <td class="col-time">{{fmtTime .ModTime}}</td>
+        <td class="col-size">{{if .IsDir}}—{{else}}{{humanSize .Size}}{{end}}</td>
+        <td class="col-actions">
+          {{if not .IsDir}}
+          <a class="action" href="/api/download?path={{.Path}}" title="下载">
+            <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+          </a>
+          {{end}}
+          <button class="action action-delete" title="删除">
+            <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          </button>
+        </td>
+      </tr>
+      {{else}}
+      <tr class="row-empty"><td colspan="5">此目录为空，拖拽文件到页面即可上传</td></tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{end}}
+
+  <footer class="footer">{{.Title}} · S3/OSS 目录浏览</footer>
+</main>
+
+<div class="drop-hint" id="drop-hint">松开鼠标上传到当前目录</div>
+<div class="toast hidden" id="toast"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

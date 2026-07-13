@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>控制台 · {{.Title}}</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <nav class="crumbs"><a href="/files/">← 返回文件浏览</a></nav>
+  <div class="topbar-right">
+    {{if .User}}
+    <span class="user-email">{{.User}}</span>
+    <form method="post" action="/api/auth/logout" class="inline-form">
+      <button class="btn btn-ghost" type="submit">退出</button>
+    </form>
+    {{end}}
+  </div>
+</header>
+
+<main class="content console">
+  <h1>系统控制台</h1>
+
+  {{if .SetupMode}}
+  <div class="notice notice-warn">
+    <strong>初始化模式：</strong>系统尚未配置管理员，当前控制台无需登录即可访问。
+    请依次完成 <em>对象存储</em>、<em>邮件服务</em> 配置，并在 <em>登录权限</em> 中设置管理员邮箱。
+    保存管理员邮箱后，系统将启用鉴权。
+  </div>
+  {{end}}
+  {{if .Msg}}<div class="notice notice-ok">{{.Msg}}</div>{{end}}
+  {{if .Err}}<div class="notice notice-err">{{.Err}}</div>{{end}}
+
+  <section class="card">
+    <h2>对象存储（S3 / OSS）</h2>
+    <form method="post" action="/console/s3" id="form-s3">
+      <div class="grid-2">
+        <div class="field">
+          <label>站点标题</label>
+          <input name="title" value="{{.Cfg.Title}}">
+        </div>
+        <div class="field">
+          <label>Endpoint</label>
+          <input name="endpoint" value="{{.Cfg.S3.Endpoint}}" placeholder="https://oss-cn-hangzhou.aliyuncs.com">
+          <small>留空使用 AWS 默认端点；阿里云 OSS / MinIO 等需填写</small>
+        </div>
+        <div class="field">
+          <label>Region</label>
+          <input name="region" value="{{.Cfg.S3.Region}}" placeholder="us-east-1">
+        </div>
+        <div class="field">
+          <label>Bucket</label>
+          <input name="bucket" value="{{.Cfg.S3.Bucket}}" required>
+        </div>
+        <div class="field">
+          <label>AccessKey</label>
+          <input name="access_key" value="{{.Cfg.S3.AccessKey}}" autocomplete="off" required>
+        </div>
+        <div class="field">
+          <label>SecretKey</label>
+          <input name="secret_key" type="password" autocomplete="new-password"
+                 placeholder="{{if .HasS3Secret}}已配置，留空保持不变{{else}}必填{{end}}">
+        </div>
+        <div class="field">
+          <label>根目录前缀</label>
+          <input name="root_prefix" value="{{.Cfg.S3.RootPrefix}}" placeholder="例如 share/public，留空为整个桶">
+          <small>仅浏览该文件夹下的内容，所有操作都被限制在此前缀内</small>
+        </div>
+        <div class="field field-check">
+          <label><input type="checkbox" name="path_style" {{if .Cfg.S3.PathStyle}}checked{{end}}> Path-Style 寻址（MinIO 等自建服务勾选）</label>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">保存</button>
+        <button class="btn" type="button" id="btn-test-s3">测试连接</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>邮件服务（SMTP）</h2>
+    <form method="post" action="/console/smtp" id="form-smtp">
+      <div class="grid-2">
+        <div class="field">
+          <label>SMTP 服务器</label>
+          <input name="host" value="{{.Cfg.SMTP.Host}}" placeholder="smtp.example.com" required>
+        </div>
+        <div class="field">
+          <label>端口</label>
+          <input name="port" type="number" value="{{if .Cfg.SMTP.Port}}{{.Cfg.SMTP.Port}}{{end}}" placeholder="465 / 587 / 25" required>
+        </div>
+        <div class="field">
+          <label>加密方式</label>
+          <select name="encryption">
+            <option value="ssl" {{if eq .Cfg.SMTP.Encryption "ssl"}}selected{{end}}>SSL/TLS（端口 465）</option>
+            <option value="starttls" {{if eq .Cfg.SMTP.Encryption "starttls"}}selected{{end}}>STARTTLS（端口 587）</option>
+            <option value="none" {{if eq .Cfg.SMTP.Encryption "none"}}selected{{end}}>不加密（端口 25）</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>发件人地址</label>
+          <input name="from" value="{{.Cfg.SMTP.From}}" placeholder="noreply@example.com" required>
+        </div>
+        <div class="field">
+          <label>用户名</label>
+          <input name="username" value="{{.Cfg.SMTP.Username}}" autocomplete="off" placeholder="通常与发件人地址相同">
+        </div>
+        <div class="field">
+          <label>密码 / 授权码</label>
+          <input name="password" type="password" autocomplete="new-password"
+                 placeholder="{{if .HasSMTPSecret}}已配置，留空保持不变{{else}}SMTP 密码或授权码{{end}}">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">保存</button>
+        <input type="email" id="test-mail-to" class="inline-input" placeholder="测试收件邮箱">
+        <button class="btn" type="button" id="btn-test-smtp">发送测试邮件</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>登录权限</h2>
+    <form method="post" action="/console/auth">
+      <div class="grid-2">
+        <div class="field">
+          <label>管理员邮箱（每行一个）</label>
+          <textarea name="admin_emails" rows="4" placeholder="admin@example.com">{{.AdminsText}}</textarea>
+          <small>管理员可访问控制台，并始终允许登录</small>
+        </div>
+        <div class="field">
+          <label>允许登录的邮箱（每行一个，支持 *@example.com 通配）</label>
+          <textarea name="allowed_emails" rows="4" placeholder="user@example.com&#10;*@company.com">{{.AllowedText}}</textarea>
+        </div>
+        <div class="field">
+          <label>会话有效期（小时）</label>
+          <input name="session_hours" type="number" value="{{if .Cfg.Auth.SessionHours}}{{.Cfg.Auth.SessionHours}}{{end}}" placeholder="默认 168（7 天）">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">保存</button>
+      </div>
+    </form>
+  </section>
+
+  <footer class="footer">{{.Title}} · S3/OSS 目录浏览</footer>
+</main>
+
+<div class="toast hidden" id="toast"></div>
+<script src="/static/console.js"></script>
+</body>
+</html>
