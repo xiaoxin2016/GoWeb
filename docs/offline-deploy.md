@@ -56,6 +56,13 @@ sha256sum -c goweb-linux-amd64.sha256     # 校验完整性
 sudo ./install.sh                          # 安装到 /opt/goweb 并注册 systemd 服务
 ```
 
+多租户场景（每个租户一个完全独立的实例）：
+
+```bash
+sudo ./install.sh --name tenant-a --port 9081
+sudo ./install.sh --name tenant-b --port 9082
+```
+
 如需手动控制每一步，按以下第 3、4 步操作：
 
 ```bash

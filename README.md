@@ -45,6 +45,38 @@ sudo ./install.sh uninstall      # 卸载（--purge 连同数据目录一起删�
 服务并完成健康检查。重复运行即为升级（自动备份旧版本为 `goweb.bak`，配置沿用）。
 无 systemd 的环境会仅安装文件并给出手动启动命令。
 
+### 多租户部署
+
+采用多实例方式实现租户隔离：**每个租户一个完全独立的实例**（独立端口、配置、
+S3/SMTP 凭证、管理员、会话密钥与审计日志），互不影响：
+
+```bash
+sudo ./install.sh --name tenant-a --port 9081    # 租户 A（服务名 goweb-tenant-a）
+sudo ./install.sh --name tenant-b --port 9082    # 租户 B（服务名 goweb-tenant-b）
+sudo ./install.sh uninstall --name tenant-a      # 卸载某个租户
+```
+
+每个实例安装在 `/opt/goweb-<name>`，各自访问 `http://IP:端口/console` 独立完成初始化。
+升级某个租户：重新运行对应的安装命令即可。
+
+前置 Nginx 按域名分发（每个租户一个域名，Cookie 天然按域隔离）：
+
+```nginx
+server {
+    listen 80;
+    server_name files-a.example.com;
+    location / { proxy_pass http://127.0.0.1:9081; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
+}
+server {
+    listen 80;
+    server_name files-b.example.com;
+    location / { proxy_pass http://127.0.0.1:9082; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
+}
+```
+
+生产环境建议参照上文 Nginx 示例补充 HTTPS 与上传相关参数
+（`client_max_body_size`、`proxy_request_buffering off`、超时）。
+
 ### 手动运行
 
 ```bash

@@ -9,16 +9,19 @@
 #   sudo ./install.sh uninstall       # 卸载（保留数据目录）
 #   sudo ./install.sh uninstall --purge   # 卸载并删除数据目录
 #
-# 安装位置：/opt/goweb（二进制与数据目录），systemd 服务名：goweb
-# 服务以 nobody 用户运行。目标机无 systemd 时仅安装文件并给出手动启动命令。
+# 多租户（每个租户一个完全独立的实例）：
+#   sudo ./install.sh --name tenant-a --port 9081    # 安装/升级租户实例
+#   sudo ./install.sh uninstall --name tenant-a      # 卸载租户实例
+#
+# 默认安装位置：/opt/goweb，服务名 goweb；
+# 指定 --name 后为 /opt/goweb-<name>，服务名 goweb-<name>，配置、密钥、
+# 会话与审计日志完全独立。服务以 nobody 用户运行。
+# 目标机无 systemd 时仅安装文件并给出手动启动命令。
 
 set -euo pipefail
 
-INSTALL_DIR="/opt/goweb"
-DATA_DIR="$INSTALL_DIR/data"
-SERVICE_NAME="goweb"
-SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
-PORT="8080"
+NAME=""
+PORT=""
 BINARY=""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -32,7 +35,7 @@ info() { echo "${C_OK}[OK]${C_RST} $*"; }
 warn() { echo "${C_WARN}[!!]${C_RST} $*"; }
 die()  { echo "${C_ERR}[错误]${C_RST} $*" >&2; exit 1; }
 
-usage() { sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0; }
+usage() { sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0; }
 
 # ---- 参数解析 ----
 ACTION="install"
@@ -40,6 +43,7 @@ PURGE=0
 while [ $# -gt 0 ]; do
     case "$1" in
         uninstall)      ACTION="uninstall" ;;
+        --name)         NAME="${2:?--name 需要参数}"; shift ;;
         --port)         PORT="${2:?--port 需要参数}"; shift ;;
         --binary)       BINARY="${2:?--binary 需要参数}"; shift ;;
         --purge)        PURGE=1 ;;
@@ -50,6 +54,24 @@ while [ $# -gt 0 ]; do
 done
 
 [ "$(id -u)" -eq 0 ] || die "请以 root 运行：sudo $0 $*"
+
+# ---- 实例定位（--name 为空时是默认单实例）----
+if [ -n "$NAME" ]; then
+    printf '%s' "$NAME" | grep -Eq '^[a-z0-9][a-z0-9-]*$' \
+        || die "--name 只允许小写字母、数字和中划线（示例：tenant-a）"
+    INSTALL_DIR="/opt/goweb-$NAME"
+    SERVICE_NAME="goweb-$NAME"
+    # 多实例并存，端口必须显式指定避免冲突
+    if [ "$ACTION" = "install" ] && [ -z "$PORT" ]; then
+        die "多实例安装必须用 --port 指定端口（避免与其他实例冲突）"
+    fi
+else
+    INSTALL_DIR="/opt/goweb"
+    SERVICE_NAME="goweb"
+fi
+PORT="${PORT:-8080}"
+DATA_DIR="$INSTALL_DIR/data"
+SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 
 HAS_SYSTEMD=0
 if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
@@ -191,7 +213,7 @@ fi
 
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 echo
-info "部署完成！服务已随系统自启。"
+info "部署完成！服务已随系统自启。${NAME:+（租户实例: $NAME）}"
 if [ "$UPGRADING" -eq 1 ]; then
     echo "  本次为升级，原有配置沿用；回滚：用 $INSTALL_DIR/goweb.bak 覆盖后重启服务"
 else
