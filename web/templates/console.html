@@ -70,6 +70,9 @@
         <div class="field field-check">
           <label><input type="checkbox" name="path_style" {{if .Cfg.S3.PathStyle}}checked{{end}}> Path-Style 寻址（MinIO 等自建服务勾选）</label>
         </div>
+        <div class="field field-check">
+          <label><input type="checkbox" name="insecure_tls" {{if .Cfg.S3.InsecureTLS}}checked{{end}}> 接受自签名证书（跳过 HTTPS 证书校验，仅限可信内网）</label>
+        </div>
       </div>
       <div class="form-actions">
         <button class="btn btn-primary" type="submit">保存</button>
@@ -110,6 +113,9 @@
           <label>密码 / 授权码</label>
           <input name="password" type="password" autocomplete="new-password"
                  placeholder="{{if .HasSMTPSecret}}已配置，留空保持不变{{else}}SMTP 密码或授权码{{end}}">
+        </div>
+        <div class="field field-check">
+          <label><input type="checkbox" name="insecure_tls" {{if .Cfg.SMTP.InsecureTLS}}checked{{end}}> 接受自签名证书（跳过 SSL/STARTTLS 证书校验，仅限可信内网）</label>
         </div>
       </div>
       <div class="form-actions">

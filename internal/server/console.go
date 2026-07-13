@@ -72,6 +72,7 @@ func (s *Server) handleSaveS3(w http.ResponseWriter, r *http.Request) {
 		c.S3.Bucket = strings.TrimSpace(r.FormValue("bucket"))
 		c.S3.RootPrefix = strings.TrimSpace(r.FormValue("root_prefix"))
 		c.S3.PathStyle = r.FormValue("path_style") == "on"
+		c.S3.InsecureTLS = r.FormValue("insecure_tls") == "on"
 		if t := strings.TrimSpace(r.FormValue("title")); t != "" {
 			c.Title = t
 		}
@@ -99,6 +100,7 @@ func (s *Server) handleSaveSMTP(w http.ResponseWriter, r *http.Request) {
 		}
 		c.SMTP.From = strings.TrimSpace(r.FormValue("from"))
 		c.SMTP.Encryption = r.FormValue("encryption")
+		c.SMTP.InsecureTLS = r.FormValue("insecure_tls") == "on"
 	})
 	if err != nil {
 		redirectConsole(w, r, "", "保存失败: "+err.Error())
@@ -163,26 +165,28 @@ func splitLines(v string) []string {
 // handleTestS3 用表单中的配置（密钥留空则用已保存的）测试对象存储连通性。
 func (s *Server) handleTestS3(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Endpoint   string `json:"endpoint"`
-		Region     string `json:"region"`
-		AccessKey  string `json:"access_key"`
-		SecretKey  string `json:"secret_key"`
-		Bucket     string `json:"bucket"`
-		RootPrefix string `json:"root_prefix"`
-		PathStyle  bool   `json:"path_style"`
+		Endpoint    string `json:"endpoint"`
+		Region      string `json:"region"`
+		AccessKey   string `json:"access_key"`
+		SecretKey   string `json:"secret_key"`
+		Bucket      string `json:"bucket"`
+		RootPrefix  string `json:"root_prefix"`
+		PathStyle   bool   `json:"path_style"`
+		InsecureTLS bool   `json:"insecure_tls"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, errors.New("请求参数错误"))
 		return
 	}
 	cfg := config.S3Config{
-		Endpoint:   strings.TrimSpace(req.Endpoint),
-		Region:     strings.TrimSpace(req.Region),
-		AccessKey:  strings.TrimSpace(req.AccessKey),
-		SecretKey:  strings.TrimSpace(req.SecretKey),
-		Bucket:     strings.TrimSpace(req.Bucket),
-		RootPrefix: strings.TrimSpace(req.RootPrefix),
-		PathStyle:  req.PathStyle,
+		Endpoint:    strings.TrimSpace(req.Endpoint),
+		Region:      strings.TrimSpace(req.Region),
+		AccessKey:   strings.TrimSpace(req.AccessKey),
+		SecretKey:   strings.TrimSpace(req.SecretKey),
+		Bucket:      strings.TrimSpace(req.Bucket),
+		RootPrefix:  strings.TrimSpace(req.RootPrefix),
+		PathStyle:   req.PathStyle,
+		InsecureTLS: req.InsecureTLS,
 	}
 	if cfg.SecretKey == "" {
 		cfg.SecretKey = s.cfg.Get().S3.SecretKey
@@ -204,13 +208,14 @@ func (s *Server) handleTestS3(w http.ResponseWriter, r *http.Request) {
 // handleTestSMTP 用表单中的配置发送一封测试邮件。
 func (s *Server) handleTestSMTP(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Host       string `json:"host"`
-		Port       int    `json:"port"`
-		Username   string `json:"username"`
-		Password   string `json:"password"`
-		From       string `json:"from"`
-		Encryption string `json:"encryption"`
-		To         string `json:"to"`
+		Host        string `json:"host"`
+		Port        int    `json:"port"`
+		Username    string `json:"username"`
+		Password    string `json:"password"`
+		From        string `json:"from"`
+		Encryption  string `json:"encryption"`
+		InsecureTLS bool   `json:"insecure_tls"`
+		To          string `json:"to"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, errors.New("请求参数错误"))
@@ -222,12 +227,13 @@ func (s *Server) handleTestSMTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cfg := config.SMTPConfig{
-		Host:       strings.TrimSpace(req.Host),
-		Port:       req.Port,
-		Username:   strings.TrimSpace(req.Username),
-		Password:   req.Password,
-		From:       strings.TrimSpace(req.From),
-		Encryption: req.Encryption,
+		Host:        strings.TrimSpace(req.Host),
+		Port:        req.Port,
+		Username:    strings.TrimSpace(req.Username),
+		Password:    req.Password,
+		From:        strings.TrimSpace(req.From),
+		Encryption:  req.Encryption,
+		InsecureTLS: req.InsecureTLS,
 	}
 	if cfg.Password == "" {
 		cfg.Password = s.cfg.Get().SMTP.Password

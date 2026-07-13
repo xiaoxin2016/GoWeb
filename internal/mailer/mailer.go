@@ -22,14 +22,15 @@ func Send(cfg config.SMTPConfig, to, subject, body string) error {
 	}
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 
+	tlsCfg := &tls.Config{ServerName: cfg.Host, InsecureSkipVerify: cfg.InsecureTLS}
+
 	var (
 		client *smtp.Client
 		err    error
 	)
 	switch strings.ToLower(cfg.Encryption) {
 	case "ssl", "tls", "smtps":
-		conn, dErr := tls.DialWithDialer(&net.Dialer{Timeout: dialTimeout}, "tcp", addr,
-			&tls.Config{ServerName: cfg.Host})
+		conn, dErr := tls.DialWithDialer(&net.Dialer{Timeout: dialTimeout}, "tcp", addr, tlsCfg)
 		if dErr != nil {
 			return fmt.Errorf("连接 SMTP(SSL) 失败: %w", dErr)
 		}
@@ -47,15 +48,17 @@ func Send(cfg config.SMTPConfig, to, subject, body string) error {
 	defer client.Close()
 
 	if strings.EqualFold(cfg.Encryption, "starttls") {
-		if err := client.StartTLS(&tls.Config{ServerName: cfg.Host}); err != nil {
+		if err := client.StartTLS(tlsCfg); err != nil {
 			return fmt.Errorf("STARTTLS 失败: %w", err)
 		}
 	}
 
 	if cfg.Username != "" {
-		auth := smtp.PlainAuth("", cfg.Username, cfg.Password, cfg.Host)
-		if err := client.Auth(auth); err != nil {
-			return fmt.Errorf("SMTP 认证失败: %w", err)
+		auth := pickAuth(client, cfg)
+		if auth != nil {
+			if err := client.Auth(auth); err != nil {
+				return fmt.Errorf("SMTP 认证失败: %w", err)
+			}
 		}
 	}
 
@@ -77,6 +80,71 @@ func Send(cfg config.SMTPConfig, to, subject, body string) error {
 		return err
 	}
 	return client.Quit()
+}
+
+// pickAuth 根据服务器通告的机制选择认证方式。
+// 标准库的 smtp.PlainAuth 会拒绝在非加密连接上认证；用户在控制台显式选择
+// “不加密”即表示接受该风险（常见于仅内网可达的 25 端口服务器），因此这里
+// 使用自实现的 PLAIN/LOGIN，不做加密限制。
+// 返回 nil 表示服务器不支持 AUTH（如无需认证的内部中继），跳过认证。
+func pickAuth(client *smtp.Client, cfg config.SMTPConfig) smtp.Auth {
+	ok, mechs := client.Extension("AUTH")
+	if !ok {
+		return nil
+	}
+	switch {
+	case strings.Contains(mechs, "PLAIN"):
+		return plainAuth{username: cfg.Username, password: cfg.Password}
+	case strings.Contains(mechs, "LOGIN"):
+		return &loginAuth{username: cfg.Username, password: cfg.Password}
+	case strings.Contains(mechs, "CRAM-MD5"):
+		return smtp.CRAMMD5Auth(cfg.Username, cfg.Password)
+	default:
+		// 服务器支持 AUTH 但机制不在上述范围，仍尝试 PLAIN
+		return plainAuth{username: cfg.Username, password: cfg.Password}
+	}
+}
+
+// plainAuth 实现 RFC 4616 PLAIN 认证，不限制连接是否加密。
+type plainAuth struct {
+	username, password string
+}
+
+func (a plainAuth) Start(_ *smtp.ServerInfo) (string, []byte, error) {
+	return "PLAIN", []byte("\x00" + a.username + "\x00" + a.password), nil
+}
+
+func (a plainAuth) Next(_ []byte, more bool) ([]byte, error) {
+	if more {
+		return nil, fmt.Errorf("PLAIN 认证收到意外的服务器质询")
+	}
+	return nil, nil
+}
+
+// loginAuth 实现 LOGIN 认证（部分旧邮件服务器仅支持此机制）。
+type loginAuth struct {
+	username, password string
+	step               int
+}
+
+func (a *loginAuth) Start(_ *smtp.ServerInfo) (string, []byte, error) {
+	a.step = 0
+	return "LOGIN", nil, nil
+}
+
+func (a *loginAuth) Next(_ []byte, more bool) ([]byte, error) {
+	if !more {
+		return nil, nil
+	}
+	a.step++
+	switch a.step {
+	case 1:
+		return []byte(a.username), nil
+	case 2:
+		return []byte(a.password), nil
+	default:
+		return nil, fmt.Errorf("LOGIN 认证收到意外的服务器质询")
+	}
 }
 
 func buildMessage(from, to, subject, body string) string {

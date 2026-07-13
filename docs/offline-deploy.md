@@ -219,7 +219,7 @@ CGO_ENABLED=0 go build -mod=vendor -trimpath -ldflags="-s -w" -o goweb .
 | 检查项 | 说明 |
 |---|---|
 | 服务器时钟 | S3 签名对时间敏感，偏差超过 15 分钟会请求失败。无外网 NTP 时请配置内网 NTP 或手动校时（`timedatectl` / `chronyc sources` 检查） |
-| HTTPS 证书 | 若内网 MinIO/SMTP 使用自签名 HTTPS 证书，需把内网 CA 加入系统信任：证书放入 `/usr/local/share/ca-certificates/` 后执行 `update-ca-certificates`（Debian/Ubuntu）或 `/etc/pki/ca-trust/source/anchors/` + `update-ca-trust`（RHEL 系）。Docker 部署则需要把 CA 挂载/构建进镜像 |
+| HTTPS 证书 | 若内网对象存储/SMTP 使用自签名证书，最简单的做法是在控制台勾选对应的「**接受自签名证书**」选项（仅限可信内网）。更规范的做法是把内网 CA 加入系统信任：证书放入 `/usr/local/share/ca-certificates/` 后执行 `update-ca-certificates`（Debian/Ubuntu）或 `/etc/pki/ca-trust/source/anchors/` + `update-ca-trust`（RHEL 系）；Docker 部署需把 CA 挂载/构建进镜像 |
 | 防火墙 | 放行服务端口（默认 8080），并确认目标机到对象存储端口（9000 等）、SMTP 端口（25/465/587）可达：`curl -v telnet://<host>:<port>` |
 | SELinux | RHEL 系如启用 SELinux，二进制放非常规目录可能被拒绝执行，可 `chcon -t bin_t /opt/goweb/goweb` 或调整策略 |
 

@@ -21,6 +21,9 @@ type S3Config struct {
 	Bucket     string `json:"bucket"`      // 存储桶名称
 	RootPrefix string `json:"root_prefix"` // 仅浏览该前缀（文件夹）下的内容，留空为整个桶
 	PathStyle  bool   `json:"path_style"`  // MinIO 等自建服务通常需要 Path-Style 寻址
+	// InsecureTLS 跳过 HTTPS 证书校验，用于私有云自签名证书场景。
+	// 开启后无法防御中间人攻击，仅在可信内网中使用。
+	InsecureTLS bool `json:"insecure_tls"`
 }
 
 // Ready 返回 S3 配置是否已具备可用的最小字段。
@@ -45,6 +48,8 @@ type SMTPConfig struct {
 	Password   string `json:"password"`
 	From       string `json:"from"`       // 发件人地址，形如 noreply@example.com
 	Encryption string `json:"encryption"` // none | ssl | starttls
+	// InsecureTLS 跳过 SSL/STARTTLS 的证书校验，用于内网自签名证书的邮件服务器。
+	InsecureTLS bool `json:"insecure_tls"`
 }
 
 // Ready 返回 SMTP 配置是否已具备可用的最小字段。

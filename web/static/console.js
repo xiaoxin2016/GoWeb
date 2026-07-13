@@ -37,6 +37,7 @@
         bucket: f.bucket.value,
         root_prefix: f.root_prefix.value,
         path_style: f.path_style.checked,
+        insecure_tls: f.insecure_tls.checked,
       });
       toast(data.message || '连接成功');
     } catch (err) {
@@ -65,6 +66,7 @@
         password: f.password.value,
         from: f.from.value,
         encryption: f.encryption.value,
+        insecure_tls: f.insecure_tls.checked,
         to,
       });
       toast(data.message || '测试邮件已发送');

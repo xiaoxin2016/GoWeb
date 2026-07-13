@@ -4,16 +4,19 @@ package storage
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
 	"mime"
+	"net/http"
 	"path"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -61,6 +64,15 @@ func New(cfg config.S3Config) (*Client, error) {
 	}
 	if cfg.Endpoint != "" {
 		opts.BaseEndpoint = aws.String(cfg.Endpoint)
+	}
+	if cfg.InsecureTLS {
+		// 私有云自签名证书场景：跳过证书校验（仅限可信内网）
+		opts.HTTPClient = awshttp.NewBuildableClient().WithTransportOptions(func(t *http.Transport) {
+			if t.TLSClientConfig == nil {
+				t.TLSClientConfig = &tls.Config{}
+			}
+			t.TLSClientConfig.InsecureSkipVerify = true
+		})
 	}
 	return &Client{api: s3.New(opts), bucket: cfg.Bucket, root: cfg.NormalizedRoot()}, nil
 }
