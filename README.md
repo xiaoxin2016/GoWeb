@@ -32,6 +32,21 @@
 
 ## 快速开始
 
+### 一键部署（推荐）
+
+```bash
+sudo ./install.sh                # 安装或升级，注册 systemd 服务并启动
+sudo ./install.sh --port 9090    # 指定监听端口
+sudo ./install.sh uninstall      # 卸载（--purge 连同数据目录一起删除）
+```
+
+脚本会自动定位二进制（脚本同目录的 `goweb` / `goweb-linux-<arch>`，或 `--binary` 指定；
+都没有且装了 Go 时从源码现场构建），安装到 `/opt/goweb`，以 `nobody` 用户注册 systemd
+服务并完成健康检查。重复运行即为升级（自动备份旧版本为 `goweb.bak`，配置沿用）。
+无 systemd 的环境会仅安装文件并给出手动启动命令。
+
+### 手动运行
+
 ```bash
 go build -o goweb .
 ./goweb

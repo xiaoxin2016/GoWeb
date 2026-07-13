@@ -46,16 +46,24 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o g
 sha256sum goweb-linux-amd64 > goweb-linux-amd64.sha256
 ```
 
-### 2. 拷贝到目标服务器
+### 2. 拷贝到目标服务器并一键安装
 
-把二进制文件（连同 `.sha256`）通过 U 盘或跳板机传到目标机，例如放到 `/opt/goweb/`：
+把二进制文件（连同 `.sha256` 和仓库根目录的 `install.sh`）通过 U 盘或跳板机传到目标机，
+放在同一目录后直接运行一键脚本即可完成第 3、4 步的全部工作：
 
 ```bash
-# 在目标机上
 sha256sum -c goweb-linux-amd64.sha256     # 校验完整性
+sudo ./install.sh                          # 安装到 /opt/goweb 并注册 systemd 服务
+```
+
+如需手动控制每一步，按以下第 3、4 步操作：
+
+```bash
+# 在目标机上（手动方式）
 sudo mkdir -p /opt/goweb/data
 sudo mv goweb-linux-amd64 /opt/goweb/goweb
 sudo chmod +x /opt/goweb/goweb
+sudo chown -R nobody /opt/goweb/data
 ```
 
 ### 3. 试运行
