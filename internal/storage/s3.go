@@ -13,6 +13,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -20,7 +21,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
 	"github.com/xiaoxin2016/goweb/internal/config"
 )
@@ -61,6 +61,10 @@ func New(cfg config.S3Config) (*Client, error) {
 		Region:       region,
 		Credentials:  credentials.NewStaticCredentialsProvider(cfg.AccessKey, cfg.SecretKey, ""),
 		UsePathStyle: cfg.PathStyle,
+		// 仅在必要时计算/校验 AWS 风格的校验和：阿里云 OSS、旧版 MinIO 等
+		// 第三方实现不支持 x-amz-checksum-* 系列头
+		RequestChecksumCalculation: aws.RequestChecksumCalculationWhenRequired,
+		ResponseChecksumValidation: aws.ResponseChecksumValidationWhenRequired,
 	}
 	if cfg.Endpoint != "" {
 		opts.BaseEndpoint = aws.String(cfg.Endpoint)
@@ -229,26 +233,44 @@ func (c *Client) listAllKeys(ctx context.Context, prefix string) ([]string, erro
 	return keys, nil
 }
 
+// deleteKeys 并发逐个删除对象。
+// 刻意不使用 DeleteObjects 批量接口：该接口在 SDK 中强制携带校验和，
+// 新版 SDK 只会发送 CRC32（x-amz-checksum-crc32），而阿里云 OSS 等第三方
+// 实现要求 Content-MD5，导致 400 MissingArgument。逐个 DeleteObject
+// 没有校验和要求，在所有 S3 兼容服务上行为一致。
 func (c *Client) deleteKeys(ctx context.Context, keys []string) error {
-	const batch = 1000 // DeleteObjects 单次上限
-	for len(keys) > 0 {
-		n := min(batch, len(keys))
-		ids := make([]types.ObjectIdentifier, 0, n)
-		for _, k := range keys[:n] {
-			ids = append(ids, types.ObjectIdentifier{Key: aws.String(k)})
+	const workers = 8
+	var (
+		wg       sync.WaitGroup
+		mu       sync.Mutex
+		firstErr error
+	)
+	sem := make(chan struct{}, workers)
+	for _, k := range keys {
+		mu.Lock()
+		stop := firstErr != nil
+		mu.Unlock()
+		if stop {
+			break
 		}
-		out, err := c.api.DeleteObjects(ctx, &s3.DeleteObjectsInput{
-			Bucket: aws.String(c.bucket),
-			Delete: &types.Delete{Objects: ids, Quiet: aws.Bool(true)},
-		})
-		if err != nil {
-			return err
-		}
-		if len(out.Errors) > 0 {
-			e := out.Errors[0]
-			return fmt.Errorf("删除 %s 失败: %s", aws.ToString(e.Key), aws.ToString(e.Message))
-		}
-		keys = keys[n:]
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(key string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			_, err := c.api.DeleteObject(ctx, &s3.DeleteObjectInput{
+				Bucket: aws.String(c.bucket),
+				Key:    aws.String(key),
+			})
+			if err != nil {
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = fmt.Errorf("删除 %s 失败: %w", key, err)
+				}
+				mu.Unlock()
+			}
+		}(k)
 	}
-	return nil
+	wg.Wait()
+	return firstErr
 }

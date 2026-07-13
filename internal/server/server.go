@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
 
+	"github.com/xiaoxin2016/goweb/internal/audit"
 	"github.com/xiaoxin2016/goweb/internal/auth"
 	"github.com/xiaoxin2016/goweb/internal/config"
 	"github.com/xiaoxin2016/goweb/internal/storage"
@@ -24,6 +26,7 @@ type Server struct {
 	codes *auth.CodeManager
 	tpl   *template.Template
 	mux   *http.ServeMux
+	audit *audit.Logger
 
 	s3mu  sync.Mutex
 	s3    *storage.Client
@@ -33,22 +36,83 @@ type Server struct {
 // New 构建服务并注册路由。
 func New(cfg *config.Store) (*Server, error) {
 	tpl, err := template.New("").Funcs(template.FuncMap{
-		"humanSize": humanSize,
-		"fmtTime":   fmtTime,
+		"humanSize":   humanSize,
+		"fmtTime":     fmtTime,
+		"actionLabel": actionLabel,
 	}).ParseFS(web.FS, "templates/*.html")
 	if err != nil {
 		return nil, err
 	}
+
+	auditLog, err := audit.New(cfg.DataDir())
+	if err != nil {
+		return nil, err
+	}
+	auditLog.Configure(cfg.Get().Syslog)
 
 	s := &Server{
 		cfg:   cfg,
 		codes: auth.NewCodeManager(),
 		tpl:   tpl,
 		mux:   http.NewServeMux(),
+		audit: auditLog,
 		s3rev: -1,
 	}
 	s.routes()
 	return s, nil
+}
+
+// auditLog 记录一条审计事件。
+func (s *Server) auditLog(r *http.Request, action, path string, opErr error) {
+	e := audit.Event{
+		User:   s.currentUser(r),
+		Action: action,
+		Path:   path,
+		IP:     clientIP(r),
+	}
+	if opErr != nil {
+		e.Result = opErr.Error()
+	}
+	s.audit.Log(e)
+}
+
+// clientIP 返回客户端 IP（优先取反向代理透传的 X-Forwarded-For 首个地址）。
+func clientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		if i := strings.IndexByte(xff, ','); i > 0 {
+			return strings.TrimSpace(xff[:i])
+		}
+		return strings.TrimSpace(xff)
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+// actionLabel 审计操作类型的中文名。
+func actionLabel(action string) string {
+	switch action {
+	case "login":
+		return "登录"
+	case "login-fail":
+		return "登录失败"
+	case "access":
+		return "访问目录"
+	case "download":
+		return "下载"
+	case "upload":
+		return "上传"
+	case "mkdir":
+		return "新建文件夹"
+	case "delete":
+		return "删除"
+	case "test":
+		return "测试"
+	default:
+		return action
+	}
 }
 
 func (s *Server) routes() {
@@ -77,8 +141,11 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /console/s3", s.requireAdmin(s.handleSaveS3))
 	m.HandleFunc("POST /console/smtp", s.requireAdmin(s.handleSaveSMTP))
 	m.HandleFunc("POST /console/auth", s.requireAdmin(s.handleSaveAuth))
+	m.HandleFunc("POST /console/syslog", s.requireAdmin(s.handleSaveSyslog))
+	m.HandleFunc("GET /console/audit", s.requireAdmin(s.handleAuditPage))
 	m.HandleFunc("POST /api/console/test-s3", s.requireAdminAPI(s.handleTestS3))
 	m.HandleFunc("POST /api/console/test-smtp", s.requireAdminAPI(s.handleTestSMTP))
+	m.HandleFunc("POST /api/console/test-syslog", s.requireAdminAPI(s.handleTestSyslog))
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {

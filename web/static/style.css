@@ -180,6 +180,46 @@ body.dragging .drop-hint { display: flex; }
 .login-actions { margin-top: 8px; }
 .login-msg { margin-top: 12px; font-size: 13px; color: var(--text-dim); min-height: 20px; }
 
+.resend-row {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--text-dim);
+  text-align: center;
+}
+.link-btn {
+  background: none; border: none; padding: 0;
+  font-size: 13px;
+  color: var(--accent);
+  cursor: pointer;
+}
+.link-btn:hover:not(:disabled) { text-decoration: underline; }
+.link-btn:disabled { color: var(--text-dim); cursor: default; }
+
+/* ---- 审计日志 ---- */
+.card-hint { color: var(--text-dim); font-size: 13px; margin-bottom: 16px; }
+.card-hint a { color: var(--accent); }
+.audit-filter { margin-bottom: 12px; }
+.audit-table td { font-size: 13px; }
+.audit-path { word-break: break-all; }
+.tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  background: var(--hover);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.tag-login { background: var(--ok-bg); color: var(--ok-fg); }
+.tag-login-fail, .tag-delete { background: var(--err-bg); color: var(--err-fg); }
+.tag-upload, .tag-mkdir { background: var(--warn-bg); color: var(--warn-fg); }
+.result-ok { color: var(--ok-fg); }
+.result-err { color: var(--err-fg); word-break: break-all; }
+.audit-note { color: var(--text-dim); font-size: 12px; margin-top: 12px; }
+.audit-note code { background: var(--hover); padding: 1px 5px; border-radius: 4px; }
+
 /* ---- 表单 ---- */
 .field { margin-bottom: 14px; }
 .field label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 5px; }

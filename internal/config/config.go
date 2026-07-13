@@ -68,12 +68,32 @@ type AuthConfig struct {
 	SessionHours int `json:"session_hours"`
 }
 
+// SyslogConfig 审计日志通过 syslog 协议外发（对接 rsyslog）的配置。
+type SyslogConfig struct {
+	Enabled  bool   `json:"enabled"`
+	Network  string `json:"network"`  // udp | tcp
+	Address  string `json:"address"`  // host:port，rsyslog 默认 514
+	Tag      string `json:"tag"`      // syslog 标签，默认 goweb-audit
+	Facility string `json:"facility"` // local0 ~ local7，默认 local0
+}
+
+// FacilityNum 返回 facility 的数值（local0=16 … local7=23）。
+func (s SyslogConfig) FacilityNum() int {
+	if len(s.Facility) == 6 && strings.HasPrefix(s.Facility, "local") {
+		if d := s.Facility[5]; d >= '0' && d <= '7' {
+			return 16 + int(d-'0')
+		}
+	}
+	return 16 // local0
+}
+
 // Config 应用完整配置。
 type Config struct {
-	Title string     `json:"title"`
-	S3    S3Config   `json:"s3"`
-	SMTP  SMTPConfig `json:"smtp"`
-	Auth  AuthConfig `json:"auth"`
+	Title  string       `json:"title"`
+	S3     S3Config     `json:"s3"`
+	SMTP   SMTPConfig   `json:"smtp"`
+	Auth   AuthConfig   `json:"auth"`
+	Syslog SyslogConfig `json:"syslog"`
 }
 
 // SetupMode 报告系统是否尚未完成初始化（未配置任何管理员）。
@@ -122,12 +142,16 @@ func (c Config) SessionDurationHours() int {
 
 // Store 提供配置的并发安全读写与持久化。
 type Store struct {
-	mu     sync.RWMutex
-	path   string
-	cfg    Config
-	secret []byte
-	rev    int64 // 每次保存自增，用于让缓存的 S3 客户端失效
+	mu      sync.RWMutex
+	path    string
+	dataDir string
+	cfg     Config
+	secret  []byte
+	rev     int64 // 每次保存自增，用于让缓存的 S3 客户端失效
 }
+
+// DataDir 返回数据目录路径。
+func (s *Store) DataDir() string { return s.dataDir }
 
 // Load 从数据目录加载配置；目录或文件不存在时会自动创建。
 // 同时加载（或生成）用于签发会话令牌的密钥。
@@ -135,7 +159,7 @@ func Load(dataDir string) (*Store, error) {
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return nil, fmt.Errorf("创建数据目录: %w", err)
 	}
-	s := &Store{path: filepath.Join(dataDir, "config.json")}
+	s := &Store{path: filepath.Join(dataDir, "config.json"), dataDir: dataDir}
 	s.cfg.Title = "GoWeb 文件浏览"
 
 	if raw, err := os.ReadFile(s.path); err == nil {

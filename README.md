@@ -22,6 +22,10 @@
     自签名证书兼容，可发送测试邮件；认证机制按服务器通告自动选择（PLAIN / LOGIN / CRAM-MD5），
     25 端口明文连接亦可认证
   - 登录权限：管理员邮箱、允许登录的邮箱（支持 `*@example.com` 通配）、会话有效期
+  - 审计日志：查询页面 + rsyslog 外发配置（UDP/TCP、Tag、Facility），可发送测试消息
+- **操作审计**：记录每位用户的登录、目录访问、下载、上传、新建文件夹、删除操作
+  （含时间、用户、路径、来源 IP、结果）；持久化于数据目录 `audit.log`（JSON Lines），
+  并可通过 syslog 协议（RFC 3164，消息体为 JSON）实时外发到 rsyslog 服务器
 
 > 内网/无外网环境部署请参阅 **[离线部署安装手册](docs/offline-deploy.md)**。
 
@@ -67,6 +71,7 @@ docker run -d -p 8080:8080 -v goweb-data:/app/data goweb
 ```
 main.go                 入口
 internal/config/        配置加载/保存（data/config.json，控制台在线修改）
+internal/audit/         操作审计：本地 JSONL + 内存缓冲 + syslog(rsyslog) 外发
 internal/auth/          邮箱验证码与会话令牌
 internal/mailer/        SMTP 邮件发送
 internal/storage/       S3 兼容存储的列目录/上传/下载/删除

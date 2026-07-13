@@ -48,6 +48,31 @@
     }
   });
 
+  const btnSyslog = $('btn-test-syslog');
+  btnSyslog.addEventListener('click', async () => {
+    const f = $('form-syslog');
+    if (!f.address.value.trim()) {
+      toast('请先填写 rsyslog 服务器地址', true);
+      return;
+    }
+    btnSyslog.disabled = true;
+    btnSyslog.textContent = '发送中…';
+    try {
+      const data = await api('/api/console/test-syslog', {
+        network: f.network.value,
+        address: f.address.value,
+        tag: f.tag.value,
+        facility: f.facility.value,
+      });
+      toast(data.message || '测试消息已发送');
+    } catch (err) {
+      toast(err.message, true);
+    } finally {
+      btnSyslog.disabled = false;
+      btnSyslog.textContent = '发送测试消息';
+    }
+  });
+
   const btnSMTP = $('btn-test-smtp');
   btnSMTP.addEventListener('click', async () => {
     const f = $('form-smtp');

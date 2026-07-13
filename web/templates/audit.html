@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>审计日志 · {{.Title}}</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <nav class="crumbs"><a href="/console">← 返回控制台</a></nav>
+  <div class="topbar-right">
+    <span class="user-email">{{.User}}</span>
+    <form method="post" action="/api/auth/logout" class="inline-form">
+      <button class="btn btn-ghost" type="submit">退出</button>
+    </form>
+  </div>
+</header>
+
+<main class="content console">
+  <h1>审计日志</h1>
+
+  <form method="get" action="/console/audit" class="toolbar audit-filter">
+    <select name="action" class="inline-input">
+      <option value="">全部操作</option>
+      {{$cur := .FilterAction}}
+      {{range .Actions}}
+      <option value="{{.}}" {{if eq . $cur}}selected{{end}}>{{actionLabel .}}</option>
+      {{end}}
+    </select>
+    <input name="user" class="inline-input" placeholder="按用户邮箱过滤" value="{{.FilterUser}}">
+    <button class="btn btn-primary" type="submit">查询</button>
+    <a class="btn" href="/console/audit">重置</a>
+  </form>
+
+  <table class="listing audit-table">
+    <thead>
+      <tr>
+        <th class="col-time">时间</th>
+        <th>用户</th>
+        <th>操作</th>
+        <th class="col-name">路径</th>
+        <th>来源 IP</th>
+        <th>结果</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Events}}
+      <tr>
+        <td class="col-time">{{fmtTime .Time}}</td>
+        <td>{{.User}}</td>
+        <td><span class="tag tag-{{.Action}}">{{actionLabel .Action}}</span></td>
+        <td class="col-name audit-path">{{.Path}}</td>
+        <td>{{.IP}}</td>
+        <td>{{if eq .Result "ok"}}<span class="result-ok">成功</span>{{else}}<span class="result-err" title="{{.Result}}">{{.Result}}</span>{{end}}</td>
+      </tr>
+      {{else}}
+      <tr class="row-empty"><td colspan="6">暂无匹配的审计记录</td></tr>
+      {{end}}
+    </tbody>
+  </table>
+
+  <p class="audit-note">显示最近 200 条（内存缓存最近 500 条）。完整历史保存在数据目录的
+  <code>audit.log</code>（JSON Lines 格式）中；如已开启 rsyslog 外发，事件也会实时发送到日志服务器。</p>
+
+  <footer class="footer">{{.Title}} · S3/OSS 目录浏览</footer>
+</main>
+</body>
+</html>

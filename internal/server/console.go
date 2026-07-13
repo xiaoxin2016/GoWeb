@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/xiaoxin2016/goweb/internal/audit"
 	"github.com/xiaoxin2016/goweb/internal/config"
 	"github.com/xiaoxin2016/goweb/internal/mailer"
 	"github.com/xiaoxin2016/goweb/internal/storage"
@@ -160,6 +161,85 @@ func splitLines(v string) []string {
 		}
 	}
 	return out
+}
+
+// handleSaveSyslog 保存审计日志外发（rsyslog）配置并立即生效。
+func (s *Server) handleSaveSyslog(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		redirectConsole(w, r, "", "表单解析失败")
+		return
+	}
+	enabled := r.FormValue("enabled") == "on"
+	address := strings.TrimSpace(r.FormValue("address"))
+	if enabled && address == "" {
+		redirectConsole(w, r, "", "开启外发时必须填写 rsyslog 服务器地址")
+		return
+	}
+	err := s.cfg.Update(func(c *config.Config) {
+		c.Syslog.Enabled = enabled
+		c.Syslog.Network = r.FormValue("network")
+		c.Syslog.Address = address
+		c.Syslog.Tag = strings.TrimSpace(r.FormValue("tag"))
+		c.Syslog.Facility = r.FormValue("facility")
+	})
+	if err != nil {
+		redirectConsole(w, r, "", "保存失败: "+err.Error())
+		return
+	}
+	s.audit.Configure(s.cfg.Get().Syslog)
+	redirectConsole(w, r, "审计日志外发配置已保存", "")
+}
+
+// handleTestSyslog 用表单中的配置发送一条测试 syslog 消息。
+func (s *Server) handleTestSyslog(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Network  string `json:"network"`
+		Address  string `json:"address"`
+		Tag      string `json:"tag"`
+		Facility string `json:"facility"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, errors.New("请求参数错误"))
+		return
+	}
+	cfg := config.SyslogConfig{
+		Enabled:  true,
+		Network:  req.Network,
+		Address:  strings.TrimSpace(req.Address),
+		Tag:      strings.TrimSpace(req.Tag),
+		Facility: req.Facility,
+	}
+	if err := audit.SendTest(cfg); err != nil {
+		writeErr(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"message": "测试消息已发送，请在 rsyslog 服务器上确认接收（UDP 无法感知对端是否收到）",
+	})
+}
+
+// auditPageData 审计日志页面数据。
+type auditPageData struct {
+	Title        string
+	User         string
+	Events       []audit.Event
+	FilterAction string
+	FilterUser   string
+	Actions      []string
+}
+
+// handleAuditPage 渲染审计日志查询页面。
+func (s *Server) handleAuditPage(w http.ResponseWriter, r *http.Request) {
+	action := r.URL.Query().Get("action")
+	user := strings.TrimSpace(r.URL.Query().Get("user"))
+	s.render(w, "audit.html", auditPageData{
+		Title:        s.cfg.Get().Title,
+		User:         s.currentUser(r),
+		Events:       s.audit.Recent(200, action, user),
+		FilterAction: action,
+		FilterUser:   user,
+		Actions:      []string{"login", "login-fail", "access", "download", "upload", "mkdir", "delete"},
+	})
 }
 
 // handleTestS3 用表单中的配置（密钥留空则用已保存的）测试对象存储连通性。

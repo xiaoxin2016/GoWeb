@@ -127,6 +127,54 @@
   </section>
 
   <section class="card">
+    <h2>审计日志（rsyslog 外发）</h2>
+    <p class="card-hint">系统会记录每位用户的目录访问、下载、上传、删除等操作，
+      管理员可在 <a href="/console/audit">审计日志页面</a> 查询。
+      开启外发后，审计事件将以 syslog 协议（RFC 3164，消息体为 JSON）实时发送到 rsyslog 服务器。</p>
+    <form method="post" action="/console/syslog" id="form-syslog">
+      <div class="grid-2">
+        <div class="field field-check">
+          <label><input type="checkbox" name="enabled" {{if .Cfg.Syslog.Enabled}}checked{{end}}> 启用 rsyslog 外发</label>
+        </div>
+        <div class="field">
+          <label>传输协议</label>
+          <select name="network">
+            <option value="udp" {{if ne .Cfg.Syslog.Network "tcp"}}selected{{end}}>UDP（rsyslog 默认）</option>
+            <option value="tcp" {{if eq .Cfg.Syslog.Network "tcp"}}selected{{end}}>TCP（可靠传输）</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>rsyslog 服务器地址</label>
+          <input name="address" value="{{.Cfg.Syslog.Address}}" placeholder="192.168.1.10:514">
+        </div>
+        <div class="field">
+          <label>标签（Tag）</label>
+          <input name="tag" value="{{.Cfg.Syslog.Tag}}" placeholder="goweb-audit">
+        </div>
+        <div class="field">
+          <label>Facility</label>
+          <select name="facility">
+            {{$fac := .Cfg.Syslog.Facility}}
+            <option value="local0" {{if or (eq $fac "local0") (eq $fac "")}}selected{{end}}>local0</option>
+            <option value="local1" {{if eq $fac "local1"}}selected{{end}}>local1</option>
+            <option value="local2" {{if eq $fac "local2"}}selected{{end}}>local2</option>
+            <option value="local3" {{if eq $fac "local3"}}selected{{end}}>local3</option>
+            <option value="local4" {{if eq $fac "local4"}}selected{{end}}>local4</option>
+            <option value="local5" {{if eq $fac "local5"}}selected{{end}}>local5</option>
+            <option value="local6" {{if eq $fac "local6"}}selected{{end}}>local6</option>
+            <option value="local7" {{if eq $fac "local7"}}selected{{end}}>local7</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">保存</button>
+        <button class="btn" type="button" id="btn-test-syslog">发送测试消息</button>
+        <a class="btn" href="/console/audit">查看审计日志 →</a>
+      </div>
+    </form>
+  </section>
+
+  <section class="card">
     <h2>登录权限</h2>
     <form method="post" action="/console/auth">
       <div class="grid-2">

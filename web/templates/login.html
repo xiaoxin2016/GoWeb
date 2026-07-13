@@ -23,9 +23,12 @@
 
   <div class="login-actions">
     <button class="btn btn-primary btn-block" id="btn-send">发送验证码</button>
-    <button class="btn btn-primary btn-block hidden" id="btn-verify">登录</button>
+    <button class="btn btn-primary btn-block hidden" id="btn-verify">登 录</button>
   </div>
   <p class="login-msg" id="login-msg"></p>
+  <p class="resend-row hidden" id="resend-row">
+    没有收到邮件？<button type="button" class="link-btn" id="btn-resend" disabled>重新发送（60s）</button>
+  </p>
 </div>
 
 <div class="toast hidden" id="toast"></div>

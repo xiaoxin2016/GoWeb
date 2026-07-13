@@ -67,11 +67,13 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := cli.Upload(ctx, rel, part); err != nil {
 			part.Close()
+			s.auditLog(r, "upload", "/"+rel, err)
 			writeErr(w, http.StatusBadGateway, fmt.Errorf("上传 %s 失败: %w", name, err))
 			return
 		}
 		part.Close()
 		uploaded = append(uploaded, name)
+		s.auditLog(r, "upload", "/"+rel, nil)
 		log.Printf("用户 %s 上传 %s", s.currentUser(r), rel)
 	}
 	if len(uploaded) == 0 {
@@ -97,6 +99,7 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := opCtx(r)
 	defer cancel()
 	obj, err := cli.Download(ctx, rel)
+	s.auditLog(r, "download", "/"+rel, err)
 	if err != nil {
 		http.Error(w, "下载失败: "+err.Error(), http.StatusNotFound)
 		return
@@ -157,7 +160,11 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := opCtx(r)
 	defer cancel()
-	if err := cli.Delete(ctx, rels); err != nil {
+	err = cli.Delete(ctx, rels)
+	for _, rel := range rels {
+		s.auditLog(r, "delete", "/"+rel, err)
+	}
+	if err != nil {
 		writeErr(w, http.StatusBadGateway, err)
 		return
 	}
@@ -192,7 +199,9 @@ func (s *Server) handleMkdir(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := opCtx(r)
 	defer cancel()
-	if err := cli.Mkdir(ctx, dir+name+"/"); err != nil {
+	err = cli.Mkdir(ctx, dir+name+"/")
+	s.auditLog(r, "mkdir", "/"+dir+name+"/", err)
+	if err != nil {
 		writeErr(w, http.StatusBadGateway, err)
 		return
 	}

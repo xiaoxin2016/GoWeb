@@ -54,6 +54,7 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		data.LoadErr = err.Error()
 	}
+	s.auditLog(r, "access", "/"+dir, err)
 	s.render(w, "browse.html", data)
 }
 
