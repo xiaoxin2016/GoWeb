@@ -1,0 +1,128 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的版本号（例如 v1.0.0），会自动创建该 tag'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: 确定版本号
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 运行测试
+        run: go test ./...
+
+      - name: 交叉编译并打包
+        env:
+          VERSION: ${{ steps.ver.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          build() {
+            local os="$1" arch="$2" ext="${3:-}"
+            local name="goweb-${os}-${arch}"
+            echo "==> 构建 $name"
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build \
+              -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
+              -o "build/${name}${ext}" .
+            # 打包：附带 README、离线部署手册与一键安装脚本
+            local stage="stage/goweb-${VERSION}-${os}-${arch}"
+            mkdir -p "$stage/docs"
+            cp "build/${name}${ext}" "$stage/goweb${ext}"
+            cp README.md install.sh "$stage/"
+            cp docs/offline-deploy.md "$stage/docs/"
+            chmod +x "$stage/install.sh" "$stage/goweb${ext}"
+            if [ "$os" = "windows" ]; then
+              (cd stage && zip -qr "../dist/goweb-${VERSION}-${os}-${arch}.zip" "goweb-${VERSION}-${os}-${arch}")
+            else
+              tar -czf "dist/goweb-${VERSION}-${os}-${arch}.tar.gz" -C stage "goweb-${VERSION}-${os}-${arch}"
+            fi
+            # 同时提供裸二进制，便于直接替换升级
+            cp "build/${name}${ext}" "dist/${name}${ext}"
+          }
+
+          build linux   amd64
+          build linux   arm64
+          build darwin  amd64
+          build darwin  arm64
+          build windows amd64 .exe
+
+          (cd dist && sha256sum * > SHA256SUMS.txt)
+          ls -lh dist
+
+      - name: 创建 Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.ver.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # workflow_dispatch 触发时先创建 tag
+          if ! git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
+            git tag "$VERSION"
+            git push origin "$VERSION"
+          fi
+
+          cat > notes.md <<'NOTES'
+          ## GoWeb — S3/OSS 目录浏览
+
+          基于对象存储（AWS S3、阿里云 OSS、MinIO 等 S3 兼容服务）的文件浏览系统，
+          界面风格参考 h5ai，支持邮箱验证码登录、上传/下载/删除、操作审计与公告栏。
+
+          ### 安装
+
+          解压后在服务器上执行一键部署脚本（需要 root）：
+
+          ```bash
+          tar xzf goweb-<版本>-linux-amd64.tar.gz && cd goweb-<版本>-linux-amd64
+          sudo ./install.sh                              # 安装到 /opt/goweb 并注册 systemd 服务
+          sudo ./install.sh --name tenant-a --port 9081  # 多租户：每个租户一个独立实例
+          ```
+
+          启动后访问 `http://<服务器IP>:8080/console` 完成初始化配置
+          （对象存储、SMTP 邮件服务、管理员邮箱）。
+
+          详细说明见压缩包内的 `README.md`，内网离线部署见 `docs/offline-deploy.md`。
+
+          ### 下载说明
+
+          - `goweb-<版本>-<系统>-<架构>.tar.gz` / `.zip`：完整包（二进制 + 文档 + 安装脚本）
+          - `goweb-<系统>-<架构>`：裸二进制，用于直接替换升级
+          - `SHA256SUMS.txt`：校验和
+
+          校验：`sha256sum -c SHA256SUMS.txt`
+          NOTES
+
+          gh release create "$VERSION" \
+            --title "GoWeb $VERSION" \
+            --notes-file notes.md \
+            --target "$GITHUB_SHA" \
+            dist/*
+
+      - name: 输出 Release 地址
+        run: echo "已发布 https://github.com/${{ github.repository }}/releases/tag/${{ steps.ver.outputs.tag }}"

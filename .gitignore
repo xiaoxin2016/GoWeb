@@ -8,3 +8,8 @@ goweb
 # 编辑器
 .idea/
 .vscode/
+
+# release 构建产物
+dist/
+build/
+stage/
