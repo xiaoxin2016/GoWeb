@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/xiaoxin2016/goweb/internal/audit"
 	"github.com/xiaoxin2016/goweb/internal/config"
@@ -161,6 +162,38 @@ func splitLines(v string) []string {
 		}
 	}
 	return out
+}
+
+// noticeMaxLen 公告文本长度上限，避免条带撑爆页面。
+const noticeMaxLen = 500
+
+// handleSaveNotice 保存公告栏配置。
+func (s *Server) handleSaveNotice(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		redirectConsole(w, r, "", "表单解析失败")
+		return
+	}
+	text := strings.TrimSpace(r.FormValue("text"))
+	if utf8.RuneCountInString(text) > noticeMaxLen {
+		redirectConsole(w, r, "", fmt.Sprintf("公告内容不能超过 %d 个字", noticeMaxLen))
+		return
+	}
+	enabled := r.FormValue("enabled") == "on"
+	if enabled && text == "" {
+		redirectConsole(w, r, "", "启用公告时必须填写公告内容")
+		return
+	}
+	err := s.cfg.Update(func(c *config.Config) {
+		c.Notice.Enabled = enabled
+		c.Notice.Text = text
+		c.Notice.Level = r.FormValue("level")
+		c.Notice.Dismissible = r.FormValue("dismissible") == "on"
+	})
+	if err != nil {
+		redirectConsole(w, r, "", "保存失败: "+err.Error())
+		return
+	}
+	redirectConsole(w, r, "公告栏配置已保存", "")
 }
 
 // handleSaveSyslog 保存审计日志外发（rsyslog）配置并立即生效。

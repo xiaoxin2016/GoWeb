@@ -141,6 +141,7 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /console/s3", s.requireAdmin(s.handleSaveS3))
 	m.HandleFunc("POST /console/smtp", s.requireAdmin(s.handleSaveSMTP))
 	m.HandleFunc("POST /console/auth", s.requireAdmin(s.handleSaveAuth))
+	m.HandleFunc("POST /console/notice", s.requireAdmin(s.handleSaveNotice))
 	m.HandleFunc("POST /console/syslog", s.requireAdmin(s.handleSaveSyslog))
 	m.HandleFunc("GET /console/audit", s.requireAdmin(s.handleAuditPage))
 	m.HandleFunc("POST /api/console/test-s3", s.requireAdminAPI(s.handleTestS3))

@@ -7,6 +7,26 @@
   const dir = dropZone.dataset.dir || '';
 
   const $ = (id) => document.getElementById(id);
+
+  // ---- 公告条带：关闭状态按公告内容记在本地，内容变更后重新显示 ----
+  const noticeBar = $('notice-bar');
+  if (noticeBar) {
+    const key = 'goweb-notice-dismissed';
+    const noticeKey = noticeBar.dataset.key || '';
+    let dismissed = null;
+    try { dismissed = localStorage.getItem(key); } catch (e) {}
+    if (dismissed === noticeKey) {
+      noticeBar.remove();
+    } else {
+      const closeBtn = $('notice-close');
+      if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+          try { localStorage.setItem(key, noticeKey); } catch (e) {}
+          noticeBar.remove();
+        });
+      }
+    }
+  }
   const toast = (msg, isErr) => {
     const t = $('toast');
     t.textContent = msg;

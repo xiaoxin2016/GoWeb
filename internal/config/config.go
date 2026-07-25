@@ -87,6 +87,32 @@ func (s SyslogConfig) FacilityNum() int {
 	return 16 // local0
 }
 
+// NoticeConfig 站点公告栏配置，公告以条带形式展示在登录后页面顶部。
+type NoticeConfig struct {
+	Enabled bool   `json:"enabled"`
+	Text    string `json:"text"`
+	// Level 展示样式：info（提示）| warn（警示）| urgent（紧急）
+	Level string `json:"level"`
+	// Dismissible 允许用户关闭；关闭状态按公告内容记在浏览器本地，
+	// 公告内容变更后会重新展示。
+	Dismissible bool `json:"dismissible"`
+}
+
+// Show 报告公告是否应当展示。
+func (n NoticeConfig) Show() bool {
+	return n.Enabled && strings.TrimSpace(n.Text) != ""
+}
+
+// LevelClass 返回条带的样式类名后缀，未配置时为 info。
+func (n NoticeConfig) LevelClass() string {
+	switch n.Level {
+	case "warn", "urgent":
+		return n.Level
+	default:
+		return "info"
+	}
+}
+
 // Config 应用完整配置。
 type Config struct {
 	Title  string       `json:"title"`
@@ -94,6 +120,7 @@ type Config struct {
 	SMTP   SMTPConfig   `json:"smtp"`
 	Auth   AuthConfig   `json:"auth"`
 	Syslog SyslogConfig `json:"syslog"`
+	Notice NoticeConfig `json:"notice"`
 }
 
 // SetupMode 报告系统是否尚未完成初始化（未配置任何管理员）。

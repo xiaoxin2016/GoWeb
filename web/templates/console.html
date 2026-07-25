@@ -127,6 +127,37 @@
   </section>
 
   <section class="card">
+    <h2>公告栏</h2>
+    <p class="card-hint">公告以条带形式展示在登录后页面的顶部，适合发布维护通知、使用须知等信息。</p>
+    <form method="post" action="/console/notice">
+      <div class="field">
+        <label>公告内容</label>
+        <textarea name="text" rows="3" maxlength="500"
+                  placeholder="例如：系统将于本周六 22:00-24:00 维护，期间暂停上传下载。">{{.Cfg.Notice.Text}}</textarea>
+        <small>最多 500 字，留空即不展示</small>
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label>展示样式</label>
+          <select name="level">
+            {{$lv := .Cfg.Notice.LevelClass}}
+            <option value="info" {{if eq $lv "info"}}selected{{end}}>提示（蓝色）</option>
+            <option value="warn" {{if eq $lv "warn"}}selected{{end}}>警示（黄色）</option>
+            <option value="urgent" {{if eq $lv "urgent"}}selected{{end}}>紧急（红色）</option>
+          </select>
+        </div>
+        <div class="field field-check">
+          <label><input type="checkbox" name="enabled" {{if .Cfg.Notice.Enabled}}checked{{end}}> 启用公告栏</label>
+          <label><input type="checkbox" name="dismissible" {{if .Cfg.Notice.Dismissible}}checked{{end}}> 允许用户关闭（公告内容变更后会重新展示）</label>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">保存</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="card">
     <h2>审计日志（rsyslog 外发）</h2>
     <p class="card-hint">系统会记录每位用户的文件下载、上传与删除操作，
       管理员可在 <a href="/console/audit">审计日志页面</a> 查询。

@@ -54,6 +54,33 @@ body {
 .user-email { color: var(--text-dim); font-size: 13px; }
 .inline-form { display: inline; }
 
+/* ---- 公告条带 ---- */
+.notice-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 24px;
+  font-size: 13px;
+  line-height: 1.5;
+  border-bottom: 1px solid transparent;
+}
+.notice-bar-icon { width: 16px; height: 16px; fill: currentColor; flex-shrink: 0; opacity: .85; }
+.notice-bar-text { flex: 1; word-break: break-word; white-space: pre-wrap; }
+.notice-bar-close {
+  flex-shrink: 0;
+  border: none; background: none; cursor: pointer;
+  color: inherit; opacity: .55;
+  font-size: 20px; line-height: 1;
+  padding: 0 4px; border-radius: 4px;
+}
+.notice-bar-close:hover { opacity: 1; }
+.notice-bar-info   { background: #eaf2fb; color: #23538a; border-bottom-color: #cfe0f3; }
+.notice-bar-warn   { background: var(--warn-bg); color: var(--warn-fg); border-bottom-color: rgba(138,109,26,.25); }
+.notice-bar-urgent { background: var(--err-bg); color: var(--err-fg); border-bottom-color: rgba(179,38,30,.25); }
+@media (prefers-color-scheme: dark) {
+  .notice-bar-info { background: #1e2f42; color: #8ec1f0; border-bottom-color: #2c4460; }
+}
+
 /* ---- 主体 ---- */
 .content { max-width: 1080px; margin: 24px auto; padding: 0 16px; }
 
@@ -238,6 +265,7 @@ body.dragging .drop-hint { display: flex; }
   outline: none; border-color: var(--accent);
 }
 .field-check label { display: flex; align-items: center; gap: 8px; color: var(--text); cursor: pointer; margin-top: 22px; }
+.field-check label + label { margin-top: 10px; }
 .field-check input { width: auto; }
 
 /* ---- 控制台 ---- */
