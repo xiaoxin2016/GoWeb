@@ -66,6 +66,9 @@ type AuthConfig struct {
 	AllowedEmails []string `json:"allowed_emails"`
 	// SessionHours 登录会话有效期（小时），默认 168（7 天）。
 	SessionHours int `json:"session_hours"`
+	// ReadOnlyDirs 只读目录：根目录下的一级目录名。普通用户在这些目录内
+	// 只能浏览与下载，上传、删除、新建文件夹仅管理员可操作。
+	ReadOnlyDirs []string `json:"readonly_dirs"`
 }
 
 // SyslogConfig 审计日志通过 syslog 协议外发（对接 rsyslog）的配置。
@@ -157,6 +160,38 @@ func (c Config) IsAllowed(email string) bool {
 		}
 	}
 	return false
+}
+
+// IsReadOnlyDir 报告根目录下的一级目录 name 是否被设为只读。
+func (c Config) IsReadOnlyDir(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, d := range c.Auth.ReadOnlyDirs {
+		if strings.Trim(d, "/") == name {
+			return true
+		}
+	}
+	return false
+}
+
+// TopDir 返回相对路径所属的一级目录名；根目录下的文件返回 ""。
+func TopDir(rel string) string {
+	rel = strings.TrimPrefix(rel, "/")
+	i := strings.IndexByte(rel, '/')
+	if i < 0 {
+		return "" // 根目录下的文件，不属于任何一级目录
+	}
+	return rel[:i]
+}
+
+// CanWrite 报告用户能否对相对路径 rel（文件或目录）执行写操作
+// （上传、删除、新建文件夹）。管理员不受限制。
+func (c Config) CanWrite(email, rel string) bool {
+	if c.IsAdmin(email) {
+		return true
+	}
+	return !c.IsReadOnlyDir(TopDir(rel))
 }
 
 // SessionDurationHours 返回会话有效期，未配置时为默认值。

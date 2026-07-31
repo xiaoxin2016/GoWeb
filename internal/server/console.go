@@ -29,11 +29,59 @@ type consoleData struct {
 	HasSMTPSecret bool
 	AdminsText    string
 	AllowedText   string
+	// TopDirs 根目录下的一级目录及其只读状态，供目录权限设置使用
+	TopDirs []dirPerm
+	DirsErr string // 读取目录列表失败时的提示
+}
+
+// dirPerm 一个一级目录的权限展示项。
+type dirPerm struct {
+	Name     string
+	ReadOnly bool
+	Missing  bool // 配置中存在但对象存储里已不存在
+}
+
+// topDirs 列出根目录下的一级目录并标注只读状态；
+// 配置中已不存在于存储的目录也一并列出，避免设置被静默丢弃。
+func (s *Server) topDirs(r *http.Request, cfg config.Config) ([]dirPerm, string) {
+	var (
+		dirs []dirPerm
+		seen = map[string]bool{}
+		msg  string
+	)
+	cli, err := s.s3Client()
+	if err == nil {
+		ctx, cancel := opCtx(r)
+		defer cancel()
+		var entries []storage.Entry
+		if entries, err = cli.List(ctx, ""); err == nil {
+			for _, e := range entries {
+				if !e.IsDir {
+					continue
+				}
+				seen[e.Name] = true
+				dirs = append(dirs, dirPerm{Name: e.Name, ReadOnly: cfg.IsReadOnlyDir(e.Name)})
+			}
+		}
+	}
+	if err != nil {
+		msg = err.Error()
+	}
+	for _, d := range cfg.Auth.ReadOnlyDirs {
+		d = strings.Trim(d, "/")
+		if d != "" && !seen[d] {
+			dirs = append(dirs, dirPerm{Name: d, ReadOnly: true, Missing: true})
+		}
+	}
+	return dirs, msg
 }
 
 func (s *Server) handleConsole(w http.ResponseWriter, r *http.Request) {
 	cfg := s.cfg.Get()
+	dirs, dirsErr := s.topDirs(r, cfg)
 	s.render(w, "console.html", consoleData{
+		TopDirs:       dirs,
+		DirsErr:       dirsErr,
 		Title:         cfg.Title,
 		Cfg:           cfg,
 		SetupMode:     cfg.SetupMode(),
@@ -162,6 +210,28 @@ func splitLines(v string) []string {
 		}
 	}
 	return out
+}
+
+// handleSaveDirPerm 保存目录权限（只读目录）设置。
+func (s *Server) handleSaveDirPerm(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		redirectConsole(w, r, "", "表单解析失败")
+		return
+	}
+	var dirs []string
+	for _, d := range r.Form["readonly"] {
+		d = strings.Trim(strings.TrimSpace(d), "/")
+		if d != "" && !strings.Contains(d, "/") {
+			dirs = append(dirs, d)
+		}
+	}
+	if err := s.cfg.Update(func(c *config.Config) {
+		c.Auth.ReadOnlyDirs = dirs
+	}); err != nil {
+		redirectConsole(w, r, "", "保存失败: "+err.Error())
+		return
+	}
+	redirectConsole(w, r, "目录权限已保存", "")
 }
 
 // noticeMaxLen 公告文本长度上限，避免条带撑爆页面。

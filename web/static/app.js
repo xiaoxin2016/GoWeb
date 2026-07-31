@@ -47,16 +47,21 @@
     return data;
   };
 
+  // 只读目录（普通用户）下不渲染任何写操作控件，相关逻辑整体跳过
+  const canWrite = dropZone.dataset.canWrite === '1';
+
   // ---- 上传 ----
   // items: [{ file: File, rel: '相对路径（可含子目录）' }]
   const fileInput = $('file-input');
-  $('btn-upload').addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', () => {
-    if (fileInput.files.length) {
-      uploadItems([...fileInput.files].map((f) => ({ file: f, rel: f.name })));
-      fileInput.value = '';
-    }
-  });
+  if (canWrite) {
+    $('btn-upload').addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files.length) {
+        uploadItems([...fileInput.files].map((f) => ({ file: f, rel: f.name })));
+        fileInput.value = '';
+      }
+    });
+  }
 
   function uploadItems(items) {
     if (!items.length) {
@@ -157,39 +162,43 @@
     return out;
   }
 
-  let dragDepth = 0;
-  document.addEventListener('dragenter', (e) => {
-    e.preventDefault();
-    if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) {
-      dragDepth++;
-      document.body.classList.add('dragging');
-    }
-  });
-  document.addEventListener('dragleave', (e) => {
-    e.preventDefault();
-    if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('dragging'); }
-  });
-  document.addEventListener('dragover', (e) => e.preventDefault());
-  document.addEventListener('drop', async (e) => {
-    e.preventDefault();
-    dragDepth = 0;
-    document.body.classList.remove('dragging');
-    const items = await collectDropped(e.dataTransfer);
-    if (items.length) uploadItems(items);
-  });
+  if (canWrite) {
+    let dragDepth = 0;
+    document.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) {
+        dragDepth++;
+        document.body.classList.add('dragging');
+      }
+    });
+    document.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('dragging'); }
+    });
+    document.addEventListener('dragover', (e) => e.preventDefault());
+    document.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      dragDepth = 0;
+      document.body.classList.remove('dragging');
+      const items = await collectDropped(e.dataTransfer);
+      if (items.length) uploadItems(items);
+    });
+  }
 
   // ---- 新建文件夹 ----
-  $('btn-mkdir').addEventListener('click', async () => {
-    const name = prompt('新文件夹名称：');
-    if (!name) return;
-    try {
-      await api('/api/mkdir', { dir, name: name.trim() });
-      toast('文件夹已创建');
-      setTimeout(() => location.reload(), 500);
-    } catch (err) {
-      toast(err.message, true);
-    }
-  });
+  if (canWrite) {
+    $('btn-mkdir').addEventListener('click', async () => {
+      const name = prompt('新文件夹名称：');
+      if (!name) return;
+      try {
+        await api('/api/mkdir', { dir, name: name.trim() });
+        toast('文件夹已创建');
+        setTimeout(() => location.reload(), 500);
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
+  }
 
   // ---- 删除 ----
   async function deletePaths(paths) {
@@ -216,24 +225,26 @@
   const rowChecks = [...document.querySelectorAll('.row-check')];
   const btnDelSel = $('btn-del-selected');
 
-  function refreshSelection() {
-    const selected = rowChecks.filter((c) => c.checked);
-    btnDelSel.classList.toggle('hidden', selected.length === 0);
-    btnDelSel.textContent = '删除选中（' + selected.length + '）';
+  if (btnDelSel) {
+    const refreshSelection = () => {
+      const selected = rowChecks.filter((c) => c.checked);
+      btnDelSel.classList.toggle('hidden', selected.length === 0);
+      btnDelSel.textContent = '删除选中（' + selected.length + '）';
+      if (checkAll) {
+        checkAll.checked = rowChecks.length > 0 && selected.length === rowChecks.length;
+      }
+    };
     if (checkAll) {
-      checkAll.checked = rowChecks.length > 0 && selected.length === rowChecks.length;
+      checkAll.addEventListener('change', () => {
+        rowChecks.forEach((c) => { c.checked = checkAll.checked; });
+        refreshSelection();
+      });
     }
-  }
-  if (checkAll) {
-    checkAll.addEventListener('change', () => {
-      rowChecks.forEach((c) => { c.checked = checkAll.checked; });
-      refreshSelection();
+    rowChecks.forEach((c) => c.addEventListener('change', refreshSelection));
+    btnDelSel.addEventListener('click', () => {
+      const paths = rowChecks.filter((c) => c.checked)
+        .map((c) => c.closest('tr').dataset.path);
+      if (paths.length) deletePaths(paths);
     });
   }
-  rowChecks.forEach((c) => c.addEventListener('change', refreshSelection));
-  btnDelSel.addEventListener('click', () => {
-    const paths = rowChecks.filter((c) => c.checked)
-      .map((c) => c.closest('tr').dataset.path);
-    if (paths.length) deletePaths(paths);
-  });
 })();

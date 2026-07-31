@@ -127,6 +127,37 @@
   </section>
 
   <section class="card">
+    <h2>目录权限</h2>
+    <p class="card-hint">勾选为<strong>只读</strong>的一级目录，普通用户仅能浏览与下载，
+      上传、删除、新建文件夹仅管理员可操作；未勾选的目录所有已登录用户均可读写。
+      管理员不受此限制。</p>
+    {{if .DirsErr}}
+    <div class="notice notice-err">无法读取目录列表：{{.DirsErr}}</div>
+    {{end}}
+    <form method="post" action="/console/dirperm">
+      {{if .TopDirs}}
+      <ul class="dirperm-list">
+        {{range .TopDirs}}
+        <li>
+          <label>
+            <input type="checkbox" name="readonly" value="{{.Name}}" {{if .ReadOnly}}checked{{end}}>
+            <svg class="icon icon-folder" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+            <span>{{.Name}}</span>
+            {{if .Missing}}<em class="dirperm-missing">（目录已不存在，取消勾选即可移除）</em>{{end}}
+          </label>
+        </li>
+        {{end}}
+      </ul>
+      {{else}}
+      <p class="dirperm-empty">根目录下暂无子目录。创建目录后回到此处即可设置权限。</p>
+      {{end}}
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">保存</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="card">
     <h2>公告栏</h2>
     <p class="card-hint">公告以条带形式展示在登录后页面的顶部，适合发布维护通知、使用须知等信息。</p>
     <form method="post" action="/console/notice">

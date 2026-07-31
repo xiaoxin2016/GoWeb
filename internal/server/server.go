@@ -76,6 +76,17 @@ func (s *Server) auditLog(r *http.Request, action, path string, opErr error) {
 	s.audit.Log(e)
 }
 
+// errReadOnly 普通用户对只读目录执行写操作时的错误。
+func errReadOnly(rel string) error {
+	return fmt.Errorf("目录 %q 为只读，仅管理员可上传、删除或新建文件夹",
+		config.TopDir(rel))
+}
+
+// canWrite 报告当前请求的用户能否对相对路径 rel 执行写操作。
+func (s *Server) canWrite(r *http.Request, rel string) bool {
+	return s.cfg.Get().CanWrite(s.currentUser(r), rel)
+}
+
 // clientIP 返回客户端 IP（优先取反向代理透传的 X-Forwarded-For 首个地址）。
 func clientIP(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
@@ -141,6 +152,7 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /console/s3", s.requireAdmin(s.handleSaveS3))
 	m.HandleFunc("POST /console/smtp", s.requireAdmin(s.handleSaveSMTP))
 	m.HandleFunc("POST /console/auth", s.requireAdmin(s.handleSaveAuth))
+	m.HandleFunc("POST /console/dirperm", s.requireAdmin(s.handleSaveDirPerm))
 	m.HandleFunc("POST /console/notice", s.requireAdmin(s.handleSaveNotice))
 	m.HandleFunc("POST /console/syslog", s.requireAdmin(s.handleSaveSyslog))
 	m.HandleFunc("GET /console/audit", s.requireAdmin(s.handleAuditPage))

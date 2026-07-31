@@ -18,13 +18,21 @@ type Crumb struct {
 	URL  string
 }
 
+// viewEntry 列表项的展示模型：条目本身 + 当前用户对它的写权限。
+type viewEntry struct {
+	storage.Entry
+	ReadOnly bool // 当前用户不可在此条目上执行写操作
+}
+
 type browseData struct {
-	Title    string
-	Dir      string // 当前目录相对路径（"" 表示根）
-	Crumbs   []Crumb
-	Entries  []storage.Entry
-	User     string
-	IsAdmin  bool
+	Title   string
+	Dir     string // 当前目录相对路径（"" 表示根）
+	Crumbs  []Crumb
+	Entries []viewEntry
+	User    string
+	IsAdmin bool
+	// CanWrite 当前目录是否允许当前用户写入（上传、新建文件夹）
+	CanWrite bool
 	LoadErr  string // 列目录失败时的提示（如 S3 未配置）
 	RootName string
 	Notice   config.NoticeConfig
@@ -54,11 +62,22 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 		NoticeKey: noticeKey(cfg.Notice),
 	}
 
+	// 目录本身的写权限：根目录始终可写（新建一级目录、上传根级文件），
+	// 子目录取决于其所属的一级目录是否只读。
+	data.CanWrite = dir == "" || cfg.CanWrite(email, dir)
+
 	cli, err := s.s3Client()
 	if err == nil {
 		ctx, cancel := opCtx(r)
 		defer cancel()
-		data.Entries, err = cli.List(ctx, dir)
+		var entries []storage.Entry
+		entries, err = cli.List(ctx, dir)
+		for _, e := range entries {
+			data.Entries = append(data.Entries, viewEntry{
+				Entry:    e,
+				ReadOnly: !cfg.CanWrite(email, e.Path),
+			})
+		}
 	}
 	if err != nil {
 		data.LoadErr = err.Error()

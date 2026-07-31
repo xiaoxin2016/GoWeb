@@ -83,6 +83,13 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 			uploadErr(w, r, http.StatusBadRequest, fmt.Errorf("文件名 %q 非法", name))
 			return
 		}
+		if !s.canWrite(r, rel) {
+			part.Close()
+			denied := errReadOnly(rel)
+			s.auditLog(r, "upload", "/"+rel, denied)
+			uploadErr(w, r, http.StatusForbidden, denied)
+			return
+		}
 		if err := cli.Upload(ctx, rel, part); err != nil {
 			part.Close()
 			s.auditLog(r, "upload", "/"+rel, err)
@@ -171,6 +178,14 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 			rels = append(rels, f)
 		}
 	}
+	for _, rel := range rels {
+		if !s.canWrite(r, rel) {
+			denied := errReadOnly(rel)
+			s.auditLog(r, "delete", "/"+rel, denied)
+			writeErr(w, http.StatusForbidden, denied)
+			return
+		}
+	}
 	cli, err := s.s3Client()
 	if err != nil {
 		writeErr(w, http.StatusServiceUnavailable, err)
@@ -208,6 +223,10 @@ func (s *Server) handleMkdir(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimSpace(req.Name)
 	if name == "" || strings.ContainsAny(name, `/\`) || name == "." || name == ".." {
 		writeErr(w, http.StatusBadRequest, errors.New("文件夹名称非法"))
+		return
+	}
+	if !s.canWrite(r, dir+name+"/") {
+		writeErr(w, http.StatusForbidden, errReadOnly(dir+name+"/"))
 		return
 	}
 	cli, err := s.s3Client()
