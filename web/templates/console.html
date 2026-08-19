@@ -253,6 +253,13 @@
           <label>会话有效期（小时）</label>
           <input name="session_hours" type="number" value="{{if .Cfg.Auth.SessionHours}}{{.Cfg.Auth.SessionHours}}{{end}}" placeholder="默认 168（7 天）">
         </div>
+        <div class="field">
+          <label>默认邮箱域名</label>
+          <input name="default_domain" value="{{.Cfg.Auth.DefaultDomain}}" placeholder="example.com（留空则必须填写完整邮箱）">
+          <small>设置后用户可只填邮箱名登录，系统自动补全为 <em>名字@该域名</em>；
+            上方两个列表中只填名字的条目保存时也会按此补全。
+            该域名不会出现在登录页，用户登录成功前不会被暴露。</small>
+        </div>
       </div>
       <div class="form-actions">
         <button class="btn btn-primary" type="submit">保存</button>

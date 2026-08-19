@@ -165,8 +165,15 @@ func (s *Server) handleSaveAuth(w http.ResponseWriter, r *http.Request) {
 		redirectConsole(w, r, "", "表单解析失败")
 		return
 	}
-	admins := splitLines(r.FormValue("admin_emails"))
-	allowed := splitLines(r.FormValue("allowed_emails"))
+	// 默认域先行解析：管理员/允许列表中只填邮箱名的条目按它补全
+	domain := config.NormalizeDomain(r.FormValue("default_domain"))
+	if domain != "" && !validDomain(domain) {
+		redirectConsole(w, r, "", fmt.Sprintf("默认域名 %q 格式不正确（示例：example.com）", domain))
+		return
+	}
+	norm := config.Config{Auth: config.AuthConfig{DefaultDomain: domain}}
+	admins := mapSlice(splitLines(r.FormValue("admin_emails")), norm.NormalizeEmail)
+	allowed := mapSlice(splitLines(r.FormValue("allowed_emails")), norm.NormalizeEmail)
 	for _, e := range admins {
 		if _, err := mail.ParseAddress(e); err != nil {
 			redirectConsole(w, r, "", fmt.Sprintf("管理员邮箱 %q 格式不正确", e))
@@ -191,12 +198,40 @@ func (s *Server) handleSaveAuth(w http.ResponseWriter, r *http.Request) {
 		c.Auth.AdminEmails = admins
 		c.Auth.AllowedEmails = allowed
 		c.Auth.SessionHours = hours
+		c.Auth.DefaultDomain = domain
 	})
 	if err != nil {
 		redirectConsole(w, r, "", "保存失败: "+err.Error())
 		return
 	}
 	redirectConsole(w, r, "登录权限配置已保存", "")
+}
+
+// validDomain 粗校验域名：仅允许字母数字、中划线与点，且含至少一个点。
+func validDomain(d string) bool {
+	if !strings.Contains(d, ".") || strings.HasPrefix(d, ".") || strings.HasSuffix(d, ".") {
+		return false
+	}
+	for _, r := range d {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-', r == '.':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// mapSlice 对切片每项应用 f。
+func mapSlice(in []string, f func(string) string) []string {
+	if in == nil {
+		return nil
+	}
+	out := make([]string, 0, len(in))
+	for _, v := range in {
+		out = append(out, f(v))
+	}
+	return out
 }
 
 func splitLines(v string) []string {

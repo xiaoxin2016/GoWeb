@@ -43,8 +43,10 @@
 
   async function sendCode(trigger) {
     const email = emailInput.value.trim();
-    if (!email || !email.includes('@')) {
-      msg.textContent = '请输入有效的邮箱地址';
+    // 不在前端校验 "@"：系统可能配置了默认邮箱域，允许只填邮箱名登录。
+    // 补全与格式校验都在服务端完成，页面不持有也不展示该域名。
+    if (!email) {
+      msg.textContent = '请输入邮箱地址';
       return;
     }
     trigger.disabled = true;

@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/mail"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/xiaoxin2016/goweb/internal/auth"
@@ -41,13 +40,14 @@ func (s *Server) handleSendCode(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, errors.New("请求参数错误"))
 		return
 	}
-	email := strings.ToLower(strings.TrimSpace(req.Email))
+	// 只填邮箱名时按控制台配置的默认域补全（未配置默认域则原样校验）
+	cfg := s.cfg.Get()
+	email := cfg.NormalizeEmail(req.Email)
 	if _, err := mail.ParseAddress(email); err != nil {
 		writeErr(w, http.StatusBadRequest, errors.New("邮箱格式不正确"))
 		return
 	}
 
-	cfg := s.cfg.Get()
 	if !cfg.IsAllowed(email) {
 		// 与发送成功返回一致的提示，避免探测哪些邮箱被允许
 		writeJSON(w, http.StatusOK, map[string]string{"message": "如果该邮箱被允许登录，验证码已发送"})
@@ -84,8 +84,8 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, errors.New("请求参数错误"))
 		return
 	}
-	email := strings.ToLower(strings.TrimSpace(req.Email))
 	cfg := s.cfg.Get()
+	email := cfg.NormalizeEmail(req.Email)
 	if !cfg.IsAllowed(email) {
 		writeErr(w, http.StatusForbidden, errors.New("该邮箱不允许登录"))
 		return

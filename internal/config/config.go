@@ -66,6 +66,10 @@ type AuthConfig struct {
 	AllowedEmails []string `json:"allowed_emails"`
 	// SessionHours 登录会话有效期（小时），默认 168（7 天）。
 	SessionHours int `json:"session_hours"`
+	// DefaultDomain 默认邮箱域名（不含 @）。设置后用户可只填邮箱名登录，
+	// 系统自动补全为 <名字>@<默认域>。为避免暴露内部域名，该值不会
+	// 出现在登录页或任何未鉴权的响应中。
+	DefaultDomain string `json:"default_domain"`
 	// ReadOnlyDirs 只读目录：根目录下的一级目录名。普通用户在这些目录内
 	// 只能浏览与下载，上传、删除、新建文件夹仅管理员可操作。
 	ReadOnlyDirs []string `json:"readonly_dirs"`
@@ -160,6 +164,25 @@ func (c Config) IsAllowed(email string) bool {
 		}
 	}
 	return false
+}
+
+// NormalizeDomain 清洗域名输入：去掉前导 @ 与空白并转小写。
+func NormalizeDomain(v string) string {
+	return strings.ToLower(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(v), "@")))
+}
+
+// NormalizeEmail 归一化登录标识：转小写去空白；若不含 "@" 且配置了默认域，
+// 则补全为 <输入>@<默认域>。未配置默认域时原样返回，由调用方按邮箱格式校验。
+func (c Config) NormalizeEmail(v string) string {
+	v = strings.ToLower(strings.TrimSpace(v))
+	if v == "" || strings.Contains(v, "@") {
+		return v
+	}
+	d := NormalizeDomain(c.Auth.DefaultDomain)
+	if d == "" {
+		return v
+	}
+	return v + "@" + d
 }
 
 // IsReadOnlyDir 报告根目录下的一级目录 name 是否被设为只读。
