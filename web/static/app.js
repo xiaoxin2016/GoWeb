@@ -220,6 +220,27 @@
     });
   });
 
+  // ---- 重命名 ----
+  document.querySelectorAll('.action-rename').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const row = btn.closest('tr');
+      const path = row.dataset.path;
+      const isDir = row.dataset.dir === '1';
+      const current = path.replace(/\/$/, '').split('/').pop();
+      const input = prompt((isDir ? '文件夹' : '文件') + '新名称：', current);
+      if (input === null) return;
+      const name = input.trim();
+      if (!name || name === current) return;
+      try {
+        await api('/api/rename', { path, name });
+        toast('已重命名');
+        setTimeout(() => location.reload(), 500);
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
+  });
+
   // ---- 多选 ----
   const checkAll = $('check-all');
   const rowChecks = [...document.querySelectorAll('.row-check')];

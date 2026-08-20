@@ -78,7 +78,7 @@ func (s *Server) auditLog(r *http.Request, action, path string, opErr error) {
 
 // errReadOnly 普通用户对只读目录执行写操作时的错误。
 func errReadOnly(rel string) error {
-	return fmt.Errorf("目录 %q 为只读，仅管理员可上传、删除或新建文件夹",
+	return fmt.Errorf("目录 %q 为只读，仅管理员可上传、重命名、删除或新建文件夹",
 		config.TopDir(rel))
 }
 
@@ -119,6 +119,8 @@ func actionLabel(action string) string {
 		return "新建文件夹"
 	case "delete":
 		return "删除"
+	case "rename":
+		return "重命名"
 	case "test":
 		return "测试"
 	default:
@@ -145,6 +147,7 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /api/upload", s.requireUserAPI(s.handleUpload))
 	m.HandleFunc("GET /api/download", s.requireUser(s.handleDownload))
 	m.HandleFunc("POST /api/delete", s.requireUserAPI(s.handleDelete))
+	m.HandleFunc("POST /api/rename", s.requireUserAPI(s.handleRename))
 	m.HandleFunc("POST /api/mkdir", s.requireUserAPI(s.handleMkdir))
 
 	// 控制台（需要管理员；初始化模式下开放）

@@ -376,7 +376,7 @@ func (s *Server) handleAuditPage(w http.ResponseWriter, r *http.Request) {
 		Events:       s.audit.Recent(200, action, user),
 		FilterAction: action,
 		FilterUser:   user,
-		Actions:      []string{"download", "upload", "delete"},
+		Actions:      []string{"download", "upload", "delete", "rename"},
 	})
 }
 

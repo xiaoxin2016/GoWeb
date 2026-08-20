@@ -243,3 +243,109 @@ func (s *Server) handleMkdir(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"created": dir + name + "/"})
 }
+
+// handleRename 重命名文件或文件夹（在原目录内改名）。
+// 请求体：{"path": "docs/a.txt", "name": "b.txt"}；文件夹路径以 "/" 结尾。
+func (s *Server) handleRename(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Path string `json:"path"`
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, errors.New("请求参数错误"))
+		return
+	}
+	name := strings.TrimSpace(req.Name)
+	if name == "" || strings.ContainsAny(name, `/\`) || name == "." || name == ".." {
+		writeErr(w, http.StatusBadRequest, errors.New("新名称非法（不能为空或包含斜杠）"))
+		return
+	}
+
+	isDir := strings.HasSuffix(req.Path, "/")
+	var oldRel string
+	var err error
+	if isDir {
+		oldRel, err = cleanDir(req.Path)
+		if err == nil && oldRel == "" {
+			err = errors.New("不能重命名根目录")
+		}
+	} else {
+		oldRel, err = cleanFile(req.Path)
+	}
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+
+	// 同目录内改名：替换路径最后一段
+	parent := ""
+	trimmed := strings.TrimSuffix(oldRel, "/")
+	if i := strings.LastIndexByte(trimmed, '/'); i >= 0 {
+		parent = trimmed[:i+1]
+	}
+	newRel := parent + name
+	if isDir {
+		newRel += "/"
+	}
+	if newRel == oldRel {
+		writeJSON(w, http.StatusOK, map[string]string{"renamed": oldRel, "to": newRel})
+		return
+	}
+	if isDir {
+		if _, err := cleanDir(newRel); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+	} else if _, err := cleanFile(newRel); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+
+	// 源与目标都必须有写权限（只读目录内仅管理员可改名）
+	for _, rel := range []string{oldRel, newRel} {
+		if !s.canWrite(r, rel) {
+			denied := errReadOnly(rel)
+			s.auditLog(r, "rename", "/"+oldRel+" → /"+newRel, denied)
+			writeErr(w, http.StatusForbidden, denied)
+			return
+		}
+	}
+
+	cli, err := s.s3Client()
+	if err != nil {
+		writeErr(w, http.StatusServiceUnavailable, err)
+		return
+	}
+	ctx, cancel := opCtx(r)
+	defer cancel()
+
+	srcExists, err := cli.Exists(ctx, oldRel)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, fmt.Errorf("检查源是否存在失败: %w", err))
+		return
+	}
+	if !srcExists {
+		writeErr(w, http.StatusNotFound, fmt.Errorf("%q 不存在", path.Base(strings.TrimSuffix(oldRel, "/"))))
+		return
+	}
+
+	// 目标已存在时拒绝，避免静默覆盖
+	exists, err := cli.Exists(ctx, newRel)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, fmt.Errorf("检查目标是否存在失败: %w", err))
+		return
+	}
+	if exists {
+		writeErr(w, http.StatusConflict, fmt.Errorf("%q 已存在", name))
+		return
+	}
+
+	err = cli.Rename(ctx, oldRel, newRel)
+	s.auditLog(r, "rename", "/"+oldRel+" → /"+newRel, err)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err)
+		return
+	}
+	log.Printf("用户 %s 重命名 %s → %s", s.currentUser(r), oldRel, newRel)
+	writeJSON(w, http.StatusOK, map[string]string{"renamed": oldRel, "to": newRel})
+}
