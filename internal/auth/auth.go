@@ -42,10 +42,39 @@ type codeEntry struct {
 type CodeManager struct {
 	mu    sync.Mutex
 	codes map[string]*codeEntry
+	// reqs 记录每个邮箱最近一次“请求验证码”的时间，与 codes 分开存放：
+	// 未被允许登录的邮箱也会登记，用于让两类邮箱的限流响应完全一致。
+	// 这里不存验证码，避免产生可被空码校验命中的条目。
+	reqs map[string]time.Time
 }
 
 func NewCodeManager() *CodeManager {
-	return &CodeManager{codes: map[string]*codeEntry{}}
+	return &CodeManager{codes: map[string]*codeEntry{}, reqs: map[string]time.Time{}}
+}
+
+// Touch 登记一次验证码请求并施加重发间隔限制，不生成验证码。
+//
+// 无论邮箱是否被允许登录都必须调用：否则只有允许名单内的邮箱才会
+// 触发“发送过于频繁”，攻击者连发两次即可据此枚举出哪些邮箱可登录。
+func (m *CodeManager) Touch(email string) error {
+	email = normalize(email)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	now := time.Now()
+	if t, ok := m.reqs[email]; ok && now.Sub(t) < resendGap {
+		return ErrTooFrequent
+	}
+	for e, t := range m.reqs { // 顺带清理过期登记
+		if now.Sub(t) >= resendGap {
+			delete(m.reqs, e)
+		}
+	}
+	if len(m.reqs) >= maxCodeStore {
+		return errors.New("系统繁忙，请稍后再试")
+	}
+	m.reqs[email] = now
+	return nil
 }
 
 // Issue 为邮箱生成一个新的验证码。受重发间隔限制。

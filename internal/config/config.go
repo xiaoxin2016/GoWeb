@@ -5,9 +5,11 @@ package config
 import (
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 )
@@ -166,15 +168,101 @@ func (c Config) IsAllowed(email string) bool {
 	return false
 }
 
-// NormalizeDomain 清洗域名输入：去掉前导 @ 与空白并转小写。
+// 邮箱校验：只放行可安全交给邮件投递系统的字符集。
+// 本地部分允许字母、数字与 . - _；域名部分允许字母、数字与 - .。
+// 其余字符（? ! = # & 空格、引号、尖括号等）以及任何控制字符（含 \r \n \t）
+// 一律在提交阶段拒绝，不交给 SMTP。
+//
+// 刻意不直接采信 net/mail.ParseAddress：它遵循 RFC 5322，会放行
+// "Bob <bob@a.com>" 这类显示名形式、带引号含空格的本地部分，以及
+// a!b#c@d 之类的特殊字符，均不适合作为登录标识直接投递。
+var (
+	emailLocalRe  = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$`)
+	domainLabelRe = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$`)
+	tldRe         = regexp.MustCompile(`^[A-Za-z]{2,}$`)
+)
+
+const (
+	maxEmailLen  = 254 // RFC 5321 邮件路径上限
+	maxLocalLen  = 64
+	maxDomainLen = 253
+)
+
+// ValidateEmail 严格校验一个完整邮箱地址，不合法时返回原因。
+func ValidateEmail(addr string) error {
+	if addr == "" {
+		return errors.New("邮箱地址不能为空")
+	}
+	if len(addr) > maxEmailLen {
+		return fmt.Errorf("邮箱地址过长（上限 %d 字符）", maxEmailLen)
+	}
+	for _, r := range addr {
+		if r < 0x20 || r == 0x7f {
+			return errors.New("邮箱地址包含控制字符")
+		}
+		if r > 0x7f {
+			return errors.New("邮箱地址只能包含 ASCII 字符")
+		}
+	}
+	at := strings.IndexByte(addr, '@')
+	if at < 0 || strings.IndexByte(addr[at+1:], '@') >= 0 {
+		return errors.New("邮箱地址必须且只能包含一个 @")
+	}
+	local, domain := addr[:at], addr[at+1:]
+
+	if local == "" || len(local) > maxLocalLen {
+		return errors.New("邮箱名部分长度不合法")
+	}
+	if !emailLocalRe.MatchString(local) || strings.Contains(local, "..") {
+		return errors.New("邮箱名只能包含字母、数字与 . - _，且不能以 . - _ 开头或结尾")
+	}
+	return validateDomain(domain)
+}
+
+// validateDomain 校验域名部分。
+func validateDomain(domain string) error {
+	if domain == "" || len(domain) > maxDomainLen {
+		return errors.New("域名长度不合法")
+	}
+	labels := strings.Split(domain, ".")
+	if len(labels) < 2 {
+		return errors.New("域名必须包含至少一个点（如 example.com）")
+	}
+	for _, l := range labels {
+		if l == "" || len(l) > 63 || !domainLabelRe.MatchString(l) {
+			return errors.New("域名只能包含字母、数字与 - .，且各段不能以 - 开头或结尾")
+		}
+	}
+	if !tldRe.MatchString(labels[len(labels)-1]) {
+		return errors.New("域名后缀不合法")
+	}
+	return nil
+}
+
+// ValidateDomainName 校验独立的域名（默认邮箱域、*@domain 通配的域部分）。
+func ValidateDomainName(domain string) error {
+	for _, r := range domain {
+		if r < 0x20 || r == 0x7f || r > 0x7f {
+			return errors.New("域名包含非法字符")
+		}
+	}
+	return validateDomain(domain)
+}
+
+// trimSpaces 只去掉首尾的普通空格。
+// 刻意不使用 strings.TrimSpace：它会连 \t \r \n 一并吞掉，
+// 等于把含控制字符的输入静默"洗"成合法地址；这类输入应当被校验器拒绝。
+func trimSpaces(v string) string { return strings.Trim(v, " ") }
+
+// NormalizeDomain 清洗域名输入：去掉前导 @ 与首尾空格并转小写。
 func NormalizeDomain(v string) string {
-	return strings.ToLower(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(v), "@")))
+	return strings.ToLower(trimSpaces(strings.TrimPrefix(trimSpaces(v), "@")))
 }
 
 // NormalizeEmail 归一化登录标识：转小写去空白；若不含 "@" 且配置了默认域，
 // 则补全为 <输入>@<默认域>。未配置默认域时原样返回，由调用方按邮箱格式校验。
 func (c Config) NormalizeEmail(v string) string {
-	v = strings.ToLower(strings.TrimSpace(v))
+	v = strings.ToLower(trimSpaces(v))
 	if v == "" || strings.Contains(v, "@") {
 		return v
 	}

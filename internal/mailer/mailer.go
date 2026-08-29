@@ -17,6 +17,17 @@ const dialTimeout = 15 * time.Second
 
 // Send 使用给定的 SMTP 配置发送一封纯文本邮件。
 func Send(cfg config.SMTPConfig, to, subject, body string) error {
+	// 最后一道防线：交给 SMTP 与邮件头之前，拒绝任何含换行/控制字符的字段。
+	// 上游已在提交阶段严格校验，这里防止其他调用路径造成头注入。
+	if err := checkHeaderSafe("收件人", to); err != nil {
+		return err
+	}
+	if err := checkHeaderSafe("发件人", cfg.From); err != nil {
+		return err
+	}
+	if err := checkHeaderSafe("邮件主题", subject); err != nil {
+		return err
+	}
 	if !cfg.Ready() {
 		return fmt.Errorf("SMTP 尚未配置，请先在控制台完成邮件设置")
 	}
@@ -159,4 +170,14 @@ func buildMessage(from, to, subject, body string) string {
 	b.WriteString(body)
 	b.WriteString("\r\n")
 	return b.String()
+}
+
+// checkHeaderSafe 拒绝会破坏邮件头结构的字符（CR、LF 及其他控制字符）。
+func checkHeaderSafe(field, v string) error {
+	for _, r := range v {
+		if r == '\r' || r == '\n' || r == 0 {
+			return fmt.Errorf("%s包含非法的换行或空字符", field)
+		}
+	}
+	return nil
 }

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/mail"
 	"net/url"
 	"strconv"
 	"strings"
@@ -141,6 +140,11 @@ func (s *Server) handleSaveSMTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	port, _ := strconv.Atoi(strings.TrimSpace(r.FormValue("port")))
+	from := strings.TrimSpace(r.FormValue("from"))
+	if err := config.ValidateEmail(from); err != nil {
+		redirectConsole(w, r, "", fmt.Sprintf("发件人地址 %q 不合法：%v", from, err))
+		return
+	}
 	err := s.cfg.Update(func(c *config.Config) {
 		c.SMTP.Host = strings.TrimSpace(r.FormValue("host"))
 		c.SMTP.Port = port
@@ -148,7 +152,7 @@ func (s *Server) handleSaveSMTP(w http.ResponseWriter, r *http.Request) {
 		if pw := r.FormValue("password"); pw != "" {
 			c.SMTP.Password = pw
 		}
-		c.SMTP.From = strings.TrimSpace(r.FormValue("from"))
+		c.SMTP.From = from
 		c.SMTP.Encryption = r.FormValue("encryption")
 		c.SMTP.InsecureTLS = r.FormValue("insecure_tls") == "on"
 	})
@@ -167,25 +171,32 @@ func (s *Server) handleSaveAuth(w http.ResponseWriter, r *http.Request) {
 	}
 	// 默认域先行解析：管理员/允许列表中只填邮箱名的条目按它补全
 	domain := config.NormalizeDomain(r.FormValue("default_domain"))
-	if domain != "" && !validDomain(domain) {
-		redirectConsole(w, r, "", fmt.Sprintf("默认域名 %q 格式不正确（示例：example.com）", domain))
-		return
+	if domain != "" {
+		if err := config.ValidateDomainName(domain); err != nil {
+			redirectConsole(w, r, "", fmt.Sprintf("默认域名 %q 不合法：%v（示例：example.com）", domain, err))
+			return
+		}
 	}
 	norm := config.Config{Auth: config.AuthConfig{DefaultDomain: domain}}
 	admins := mapSlice(splitLines(r.FormValue("admin_emails")), norm.NormalizeEmail)
 	allowed := mapSlice(splitLines(r.FormValue("allowed_emails")), norm.NormalizeEmail)
 	for _, e := range admins {
-		if _, err := mail.ParseAddress(e); err != nil {
-			redirectConsole(w, r, "", fmt.Sprintf("管理员邮箱 %q 格式不正确", e))
+		if err := config.ValidateEmail(e); err != nil {
+			redirectConsole(w, r, "", fmt.Sprintf("管理员邮箱 %q 不合法：%v", e, err))
 			return
 		}
 	}
 	for _, e := range allowed {
-		if !strings.HasPrefix(e, "*@") {
-			if _, err := mail.ParseAddress(e); err != nil {
-				redirectConsole(w, r, "", fmt.Sprintf("邮箱 %q 格式不正确（通配请使用 *@example.com）", e))
+		if after, ok := strings.CutPrefix(e, "*@"); ok {
+			if err := config.ValidateDomainName(after); err != nil {
+				redirectConsole(w, r, "", fmt.Sprintf("通配 %q 的域名不合法：%v", e, err))
 				return
 			}
+			continue
+		}
+		if err := config.ValidateEmail(e); err != nil {
+			redirectConsole(w, r, "", fmt.Sprintf("邮箱 %q 不合法：%v（通配请使用 *@example.com）", e, err))
+			return
 		}
 	}
 	// 防呆：初始化完成后不允许把管理员清空，否则系统会退回无鉴权的初始化模式
@@ -205,21 +216,6 @@ func (s *Server) handleSaveAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectConsole(w, r, "登录权限配置已保存", "")
-}
-
-// validDomain 粗校验域名：仅允许字母数字、中划线与点，且含至少一个点。
-func validDomain(d string) bool {
-	if !strings.Contains(d, ".") || strings.HasPrefix(d, ".") || strings.HasSuffix(d, ".") {
-		return false
-	}
-	for _, r := range d {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-', r == '.':
-		default:
-			return false
-		}
-	}
-	return true
 }
 
 // mapSlice 对切片每项应用 f。
@@ -439,10 +435,16 @@ func (s *Server) handleTestSMTP(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, errors.New("请求参数错误"))
 		return
 	}
-	to := strings.TrimSpace(req.To)
-	if _, err := mail.ParseAddress(to); err != nil {
-		writeErr(w, http.StatusBadRequest, errors.New("请填写有效的测试收件邮箱"))
+	to := strings.ToLower(strings.TrimSpace(req.To))
+	if err := config.ValidateEmail(to); err != nil {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("测试收件邮箱不合法：%w", err))
 		return
+	}
+	if from := strings.TrimSpace(req.From); from != "" {
+		if err := config.ValidateEmail(from); err != nil {
+			writeErr(w, http.StatusBadRequest, fmt.Errorf("发件人地址不合法：%w", err))
+			return
+		}
 	}
 	cfg := config.SMTPConfig{
 		Host:        strings.TrimSpace(req.Host),

@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"net/mail"
 	"os"
 	"time"
 
 	"github.com/xiaoxin2016/goweb/internal/auth"
+	"github.com/xiaoxin2016/goweb/internal/config"
 	"github.com/xiaoxin2016/goweb/internal/mailer"
 )
 
@@ -43,11 +43,19 @@ func (s *Server) handleSendCode(w http.ResponseWriter, r *http.Request) {
 	// 只填邮箱名时按控制台配置的默认域补全（未配置默认域则原样校验）
 	cfg := s.cfg.Get()
 	email := cfg.NormalizeEmail(req.Email)
-	if _, err := mail.ParseAddress(email); err != nil {
+	// 严格校验后才允许进入后续流程：不合法的输入绝不交给邮件投递系统
+	if err := config.ValidateEmail(email); err != nil {
 		writeErr(w, http.StatusBadRequest, errors.New("邮箱格式不正确"))
 		return
 	}
 
+	// 限流先于允许名单判断，且对两类邮箱一视同仁地登记：
+	// 否则只有名单内的邮箱才会触发“发送过于频繁”，攻击者连发两次
+	// 即可据此枚举出哪些邮箱可以登录。
+	if err := s.codes.Touch(email); err != nil {
+		writeErr(w, http.StatusTooManyRequests, err)
+		return
+	}
 	if !cfg.IsAllowed(email) {
 		// 与发送成功返回一致的提示，避免探测哪些邮箱被允许
 		writeJSON(w, http.StatusOK, map[string]string{"message": "如果该邮箱被允许登录，验证码已发送"})
@@ -86,6 +94,10 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 	}
 	cfg := s.cfg.Get()
 	email := cfg.NormalizeEmail(req.Email)
+	if err := config.ValidateEmail(email); err != nil {
+		writeErr(w, http.StatusBadRequest, errors.New("邮箱格式不正确"))
+		return
+	}
 	if !cfg.IsAllowed(email) {
 		writeErr(w, http.StatusForbidden, errors.New("该邮箱不允许登录"))
 		return

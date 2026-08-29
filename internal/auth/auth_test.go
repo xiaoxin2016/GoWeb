@@ -60,3 +60,36 @@ func TestToken(t *testing.T) {
 		t.Fatal("过期令牌不应通过")
 	}
 }
+
+// Touch 对所有邮箱一视同仁地限流：这是防止通过“发送过于频繁”
+// 枚举允许名单的关键，允许与不允许的邮箱行为必须完全一致。
+func TestTouchRateLimitUniform(t *testing.T) {
+	m := NewCodeManager()
+	for _, email := range []string{"allowed@test.com", "notallowed@evil.com"} {
+		if err := m.Touch(email); err != nil {
+			t.Fatalf("%s 首次请求应通过: %v", email, err)
+		}
+		if err := m.Touch(email); err == nil {
+			t.Errorf("%s 第二次请求应被限流", email)
+		} else if err != ErrTooFrequent {
+			t.Errorf("%s 限流错误应为 ErrTooFrequent，实际 %v", email, err)
+		}
+	}
+	// 大小写与首尾空白归一化后视为同一邮箱
+	if err := m.Touch("  Allowed@Test.com  "); err != ErrTooFrequent {
+		t.Errorf("同一邮箱的大小写变体应同样被限流，实际 %v", err)
+	}
+}
+
+// Touch 只登记请求时间，不得产生可被空验证码命中的条目
+func TestTouchDoesNotCreateUsableCode(t *testing.T) {
+	m := NewCodeManager()
+	if err := m.Touch("nobody@test.com"); err != nil {
+		t.Fatal(err)
+	}
+	for _, code := range []string{"", "000000"} {
+		if err := m.Verify("nobody@test.com", code); err == nil {
+			t.Errorf("仅 Touch 过的邮箱不应能用验证码 %q 通过校验", code)
+		}
+	}
+}

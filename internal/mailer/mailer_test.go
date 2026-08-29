@@ -160,3 +160,37 @@ func TestSendNoAuthServer(t *testing.T) {
 		t.Error("邮件未投递")
 	}
 }
+
+// TestSendRejectsHeaderInjection 邮件层最后一道防线：含 CR/LF 的字段绝不进入 SMTP 会话。
+func TestSendRejectsHeaderInjection(t *testing.T) {
+	srv := newFakeSMTP(t, "PLAIN")
+	host, port := srv.addr()
+	base := config.SMTPConfig{
+		Host: host, Port: port,
+		From: "noreply@corp.local", Encryption: "none",
+	}
+
+	cases := []struct {
+		name string
+		cfg  config.SMTPConfig
+		to   string
+		subj string
+	}{
+		{"收件人含 CRLF", base, "a@corp.local\r\nBcc: evil@x.com", "主题"},
+		{"收件人含 LF", base, "a@corp.local\nX-Injected: 1", "主题"},
+		{"主题含 CRLF", base, "a@corp.local", "主题\r\nBcc: evil@x.com"},
+		{"发件人含 CRLF", func() config.SMTPConfig {
+			c := base
+			c.From = "noreply@corp.local\r\nBcc: evil@x.com"
+			return c
+		}(), "a@corp.local", "主题"},
+	}
+	for _, tc := range cases {
+		if err := Send(tc.cfg, tc.to, tc.subj, "正文"); err == nil {
+			t.Errorf("%s：应被拒绝", tc.name)
+		}
+	}
+	if srv.gotData != "" {
+		t.Errorf("不应有任何邮件被投递，却收到: %q", srv.gotData)
+	}
+}
