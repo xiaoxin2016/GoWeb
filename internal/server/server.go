@@ -87,7 +87,7 @@ func (s *Server) auditLog(r *http.Request, action, path string, opErr error) {
 
 // errReadOnly 普通用户对只读目录执行写操作时的错误。
 func errReadOnly(rel string) error {
-	return fmt.Errorf("目录 %q 为只读，仅管理员可上传、重命名、删除或新建文件夹",
+	return fmt.Errorf("目录 %q 为只读，仅管理员可上传、删除或新建文件夹",
 		config.TopDir(rel))
 }
 
@@ -156,23 +156,24 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /api/upload", s.requireUserAPI(s.handleUpload))
 	m.HandleFunc("GET /api/download", s.requireUser(s.handleDownload))
 	m.HandleFunc("POST /api/delete", s.requireUserAPI(s.handleDelete))
-	// 不套 requireUserAPI：未登录时它会返回 401，同样暴露了接口的存在。
-	// 权限与可见性由 handleRename 内部统一处理（非管理员一律 404）。
-	m.HandleFunc("POST /api/rename", s.handleRename)
+	m.HandleFunc("POST /api/rename", s.requireAdminAPI(adminStrict, s.handleRename))
 	m.HandleFunc("POST /api/mkdir", s.requireUserAPI(s.handleMkdir))
 
-	// 控制台（需要管理员；初始化模式下开放）
-	m.HandleFunc("GET /console", s.requireAdmin(s.handleConsole))
-	m.HandleFunc("POST /console/s3", s.requireAdmin(s.handleSaveS3))
-	m.HandleFunc("POST /console/smtp", s.requireAdmin(s.handleSaveSMTP))
-	m.HandleFunc("POST /console/auth", s.requireAdmin(s.handleSaveAuth))
-	m.HandleFunc("POST /console/dirperm", s.requireAdmin(s.handleSaveDirPerm))
-	m.HandleFunc("POST /console/notice", s.requireAdmin(s.handleSaveNotice))
-	m.HandleFunc("POST /console/syslog", s.requireAdmin(s.handleSaveSyslog))
-	m.HandleFunc("GET /console/audit", s.requireAdmin(s.handleAuditPage))
-	m.HandleFunc("POST /api/console/test-s3", s.requireAdminAPI(s.handleTestS3))
-	m.HandleFunc("POST /api/console/test-smtp", s.requireAdminAPI(s.handleTestSMTP))
-	m.HandleFunc("POST /api/console/test-syslog", s.requireAdminAPI(s.handleTestSyslog))
+	// 控制台配置：初始化模式下开放，供首次配置
+	m.HandleFunc("GET /console", s.requireAdmin(setupOpen, s.handleConsole))
+	m.HandleFunc("POST /console/s3", s.requireAdmin(setupOpen, s.handleSaveS3))
+	m.HandleFunc("POST /console/smtp", s.requireAdmin(setupOpen, s.handleSaveSMTP))
+	m.HandleFunc("POST /console/auth", s.requireAdmin(setupOpen, s.handleSaveAuth))
+	m.HandleFunc("POST /console/dirperm", s.requireAdmin(setupOpen, s.handleSaveDirPerm))
+	m.HandleFunc("POST /console/notice", s.requireAdmin(setupOpen, s.handleSaveNotice))
+	m.HandleFunc("POST /console/syslog", s.requireAdmin(setupOpen, s.handleSaveSyslog))
+	m.HandleFunc("POST /api/console/test-s3", s.requireAdminAPI(setupOpen, s.handleTestS3))
+	m.HandleFunc("POST /api/console/test-smtp", s.requireAdminAPI(setupOpen, s.handleTestSMTP))
+	m.HandleFunc("POST /api/console/test-syslog", s.requireAdminAPI(setupOpen, s.handleTestSyslog))
+
+	// 审计日志展示的是既有的用户活动记录（邮箱、文件路径），不属于首次配置
+	// 所需，因此不对初始化模式开放。
+	m.HandleFunc("GET /console/audit", s.requireAdmin(adminStrict, s.handleAuditPage))
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -249,33 +250,60 @@ func (s *Server) requireUserAPI(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func (s *Server) isAdminReq(r *http.Request) bool {
+// 管理员端点对初始化模式（尚未配置任何管理员）的策略，在注册路由处显式声明。
+const (
+	// setupOpen：初始化模式下放行。仅用于控制台自身的首次配置——
+	// 否则在配置出第一个管理员之前无人能完成初始化。
+	setupOpen = true
+	// adminStrict：必须是确已登录的管理员，初始化模式下同样拒绝。
+	// 控制台之外的管理员功能都应使用它，避免初始化窗口期被匿名调用。
+	adminStrict = false
+)
+
+// isAdminReq 报告请求是否来自管理员。
+// allowSetup 见 setupOpen / adminStrict 的说明。
+func (s *Server) isAdminReq(r *http.Request, allowSetup bool) bool {
 	cfg := s.cfg.Get()
-	if cfg.SetupMode() {
-		return true // 初始化模式：控制台开放，用于首次配置
+	if allowSetup && cfg.SetupMode() {
+		return true
 	}
 	email := s.currentUser(r)
 	return email != "" && cfg.IsAdmin(email)
 }
 
-func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
+// denyAdmin 以与未知路由完全一致的 404 拒绝请求。
+//
+// 管理员功能对非管理员应当"不存在"而非"无权限"：403 会暴露该端点的存在，
+// 让普通用户看到自己用不到的功能、也给探测者提供了可枚举的目标。
+// 所有管理员端点都经由本函数拒绝，保证行为一致。
+func (s *Server) denyAdmin(w http.ResponseWriter, r *http.Request) {
+	log.Printf("拒绝非管理员访问 %s %s（来自 %s，用户 %q）",
+		r.Method, r.URL.Path, clientIP(r), s.currentUser(r))
+	http.NotFound(w, r)
+}
+
+// requireAdmin 页面版：已登录的非管理员按不存在处理；
+// 完全未登录则走正常登录流程（与其他需要登录的页面一致）。
+func (s *Server) requireAdmin(allowSetup bool, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !s.isAdminReq(r) {
-			if s.currentUser(r) == "" {
-				http.Redirect(w, r, "/login", http.StatusFound)
-				return
-			}
-			http.Error(w, "需要管理员权限", http.StatusForbidden)
+		if s.isAdminReq(r, allowSetup) {
+			next(w, r)
 			return
 		}
-		next(w, r)
+		if s.currentUser(r) == "" {
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+		s.denyAdmin(w, r)
 	}
 }
 
-func (s *Server) requireAdminAPI(next http.HandlerFunc) http.HandlerFunc {
+// requireAdminAPI 接口版：任何非管理员（含未登录）一律按不存在处理。
+// 接口不做登录跳转，用 401 区分“未登录”同样会暴露端点存在。
+func (s *Server) requireAdminAPI(allowSetup bool, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !s.isAdminReq(r) {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "需要管理员权限"})
+		if !s.isAdminReq(r, allowSetup) {
+			s.denyAdmin(w, r)
 			return
 		}
 		next(w, r)

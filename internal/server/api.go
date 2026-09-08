@@ -244,28 +244,11 @@ func (s *Server) handleMkdir(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"created": dir + name + "/"})
 }
 
-// handleRename 重命名文件或文件夹（在原目录内改名）。
+// handleRename 重命名文件或文件夹（在原目录内改名），仅管理员可用。
 // 请求体：{"path": "docs/a.txt", "name": "b.txt"}；文件夹路径以 "/" 结尾。
 func (s *Server) handleRename(w http.ResponseWriter, r *http.Request) {
-	// 重命名仅管理员可用，且对其他人完全不可见：非管理员一律返回与未知
-	// 路由完全一致的 404，不暴露该接口的存在。
-	//
-	// 这个判断必须在解析请求体之前完成——否则畸形 JSON 会先得到 400，
-	// 同样能证明接口存在。也不复用 isAdminReq：它在初始化模式下对任何人
-	// 返回 true，而此处只接受确已登录的管理员。
-	if email := s.currentUser(r); email == "" || !s.cfg.Get().IsAdmin(email) {
-		// 尽力记录一次审计（读取有上限，失败也不影响响应）
-		var attempt struct {
-			Path string `json:"path"`
-			Name string `json:"name"`
-		}
-		json.NewDecoder(io.LimitReader(r.Body, 8<<10)).Decode(&attempt)
-		s.auditLog(r, "rename", attempt.Path+" → "+attempt.Name,
-			errors.New("非管理员，按不存在处理"))
-		http.NotFound(w, r)
-		return
-	}
-
+	// 权限与可见性由 requireAdminAPI(adminStrict) 统一保证：
+	// 非管理员在进入本函数之前就已收到与未知路由一致的 404。
 	var req struct {
 		Path string `json:"path"`
 		Name string `json:"name"`
