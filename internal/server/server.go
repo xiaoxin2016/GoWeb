@@ -96,13 +96,20 @@ func (s *Server) canWrite(r *http.Request, rel string) bool {
 	return s.cfg.Get().CanWrite(s.currentUser(r), rel)
 }
 
-// clientIP 返回客户端 IP（优先取反向代理透传的 X-Forwarded-For 首个地址）。
+// clientIP 返回客户端 IP，优先取反向代理透传的 X-Forwarded-For 首个地址。
+//
+// 该头由客户端完全可控：未经校验就原样记录，攻击者可借此伪造出足以乱真的
+// 日志行嫁祸他人，也会污染审计记录与外发到 rsyslog 的内容。因此只在其首个
+// 地址确实能解析为 IP 时才采信，否则回退到真实的连接地址。
 func clientIP(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if i := strings.IndexByte(xff, ','); i > 0 {
-			return strings.TrimSpace(xff[:i])
+		first := xff
+		if i := strings.IndexByte(xff, ','); i >= 0 {
+			first = xff[:i]
 		}
-		return strings.TrimSpace(xff)
+		if ip := net.ParseIP(strings.TrimSpace(first)); ip != nil {
+			return ip.String()
+		}
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
@@ -271,14 +278,34 @@ func (s *Server) isAdminReq(r *http.Request, allowSetup bool) bool {
 	return email != "" && cfg.IsAdmin(email)
 }
 
+// requesterDesc 描述请求者的身份状态，仅用于服务端日志。
+//
+// currentUser 把「没带 Cookie」「令牌伪造或过期」「已被移出允许名单」
+// 一律折叠成空字符串，但三者的安全含义完全不同：携带无效令牌通常意味着
+// 有人在伪造会话，值得单独关注，不该淹没在普通的未登录访问里。
+func (s *Server) requesterDesc(r *http.Request) string {
+	c, err := r.Cookie(sessionCookie)
+	if err != nil {
+		return "未登录（无会话 Cookie）"
+	}
+	email, ok := auth.ParseToken(s.cfg.Secret(), c.Value)
+	if !ok {
+		return "会话令牌无效或已过期"
+	}
+	if !s.cfg.Get().IsAllowed(email) {
+		return "会话有效但已不在允许名单: " + email
+	}
+	return email
+}
+
 // denyAdmin 以与未知路由完全一致的 404 拒绝请求。
 //
 // 管理员功能对非管理员应当"不存在"而非"无权限"：403 会暴露该端点的存在，
 // 让普通用户看到自己用不到的功能、也给探测者提供了可枚举的目标。
 // 所有管理员端点都经由本函数拒绝，保证行为一致。
 func (s *Server) denyAdmin(w http.ResponseWriter, r *http.Request) {
-	log.Printf("拒绝非管理员访问 %s %s（来自 %s，用户 %q）",
-		r.Method, r.URL.Path, clientIP(r), s.currentUser(r))
+	log.Printf("拒绝非管理员访问 %s %q（来自 %s，身份: %s）",
+		r.Method, r.URL.Path, clientIP(r), s.requesterDesc(r))
 	http.NotFound(w, r)
 }
 

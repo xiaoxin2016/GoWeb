@@ -275,3 +275,58 @@ func TestNonAdminKeepsOtherWrites(t *testing.T) {
 		t.Errorf("普通用户新建文件夹不应被拒，实际 %d %s", rec.Code, rec.Body)
 	}
 }
+
+// clientIP 只应采信形如 IP 的 X-Forwarded-For，否则回退连接地址：
+// 该头由客户端可控，未经校验会被用来伪造日志与审计记录。
+func TestClientIPRejectsForgedXFF(t *testing.T) {
+	cases := []struct {
+		name, xff, want string
+	}{
+		{"无该头", "", "192.0.2.10"},
+		{"合法 IPv4", "203.0.113.5", "203.0.113.5"},
+		{"合法 IPv6", "2001:db8::1", "2001:db8::1"},
+		{"代理链取首个", "203.0.113.5, 10.0.0.1, 10.0.0.2", "203.0.113.5"},
+		{"首个含空白", "  203.0.113.5 , 10.0.0.1", "203.0.113.5"},
+		{"伪造日志行", "1.2.3.4\tFAKE] 拒绝非管理员访问 GET /admin", "192.0.2.10"},
+		{"非 IP 文本", "not-an-ip", "192.0.2.10"},
+		{"空值", "   ", "192.0.2.10"},
+		{"首个为空", ", 203.0.113.5", "192.0.2.10"},
+	}
+	for _, tc := range cases {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.RemoteAddr = "192.0.2.10:54321"
+		if tc.xff != "" {
+			req.Header.Set("X-Forwarded-For", tc.xff)
+		}
+		if got := clientIP(req); got != tc.want {
+			t.Errorf("%s：clientIP = %q，期望 %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// 日志中的身份描述必须区分未登录、令牌无效与已登录普通用户
+func TestRequesterDescDistinguishesStates(t *testing.T) {
+	srv := newTestServer(t, Options{IgnoreEmail: true})
+	userCk := login(t, srv, "user@test.com")
+
+	noCookie := httptest.NewRequest(http.MethodPost, "/api/rename", nil)
+	if got := srv.requesterDesc(noCookie); !strings.Contains(got, "未登录") {
+		t.Errorf("无 Cookie 应描述为未登录，实际 %q", got)
+	}
+
+	forged := httptest.NewRequest(http.MethodPost, "/api/rename", nil)
+	forged.AddCookie(&http.Cookie{Name: sessionCookie, Value: "forged.garbage.token"})
+	got := srv.requesterDesc(forged)
+	if !strings.Contains(got, "无效") {
+		t.Errorf("伪造令牌应被单独标注，实际 %q", got)
+	}
+	if strings.Contains(got, "未登录") {
+		t.Errorf("伪造令牌不应与未登录混为一谈，实际 %q", got)
+	}
+
+	logged := httptest.NewRequest(http.MethodPost, "/api/rename", nil)
+	logged.AddCookie(userCk)
+	if got := srv.requesterDesc(logged); got != "user@test.com" {
+		t.Errorf("已登录用户应记录邮箱，实际 %q", got)
+	}
+}
