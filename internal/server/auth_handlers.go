@@ -68,6 +68,13 @@ func (s *Server) handleSendCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// --ignore-email：不投递邮件，验证码直接打印到控制台，后续流程不变
+	if s.opts.IgnoreEmail {
+		log.Printf("[ignore-email] %s 的登录验证码: %s（10 分钟内有效）", email, code)
+		writeJSON(w, http.StatusOK, map[string]string{"message": "如果该邮箱被允许登录，验证码已发送"})
+		return
+	}
+
 	body := fmt.Sprintf("您好，\r\n\r\n您的 %s 登录验证码是：%s\r\n\r\n验证码 10 分钟内有效。如果这不是您本人的操作，请忽略本邮件。",
 		cfg.Title, code)
 	if err := mailer.Send(cfg.SMTP, email, fmt.Sprintf("【%s】登录验证码", cfg.Title), body); err != nil {

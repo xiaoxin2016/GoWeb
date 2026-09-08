@@ -20,6 +20,13 @@ import (
 
 const sessionCookie = "goweb_session"
 
+// Options 启动参数。
+type Options struct {
+	// IgnoreEmail 为 true 时不经 SMTP 投递，验证码直接打印到服务端控制台，
+	// 登录流程其余环节不变。用于未配置邮件服务的内网部署与排障。
+	IgnoreEmail bool
+}
+
 // Server 应用 HTTP 服务。
 type Server struct {
 	cfg   *config.Store
@@ -27,6 +34,7 @@ type Server struct {
 	tpl   *template.Template
 	mux   *http.ServeMux
 	audit *audit.Logger
+	opts  Options
 
 	s3mu  sync.Mutex
 	s3    *storage.Client
@@ -34,7 +42,7 @@ type Server struct {
 }
 
 // New 构建服务并注册路由。
-func New(cfg *config.Store) (*Server, error) {
+func New(cfg *config.Store, opts Options) (*Server, error) {
 	tpl, err := template.New("").Funcs(template.FuncMap{
 		"humanSize":   humanSize,
 		"fmtTime":     fmtTime,
@@ -56,6 +64,7 @@ func New(cfg *config.Store) (*Server, error) {
 		tpl:   tpl,
 		mux:   http.NewServeMux(),
 		audit: auditLog,
+		opts:  opts,
 		s3rev: -1,
 	}
 	s.routes()

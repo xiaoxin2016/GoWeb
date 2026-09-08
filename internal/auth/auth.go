@@ -100,6 +100,19 @@ func (m *CodeManager) Issue(email string) (string, error) {
 	return code, nil
 }
 
+// Peek 返回该邮箱当前有效的验证码，没有则返回 ""。
+// 供 --ignore-email 之类的测试场景读取验证码，不影响尝试次数与有效期。
+func (m *CodeManager) Peek(email string) string {
+	email = normalize(email)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	e, ok := m.codes[email]
+	if !ok || time.Now().After(e.expires) {
+		return ""
+	}
+	return e.code
+}
+
 // Verify 校验验证码，成功后立即作废。
 func (m *CodeManager) Verify(email, code string) error {
 	email = normalize(email)

@@ -301,14 +301,12 @@ func (s *Server) handleRename(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 源与目标都必须有写权限（只读目录内仅管理员可改名）
-	for _, rel := range []string{oldRel, newRel} {
-		if !s.canWrite(r, rel) {
-			denied := errReadOnly(rel)
-			s.auditLog(r, "rename", "/"+oldRel+" → /"+newRel, denied)
-			writeErr(w, http.StatusForbidden, denied)
-			return
-		}
+	// 重命名仅对管理员开放
+	if !s.isAdminReq(r) {
+		denied := errors.New("重命名仅管理员可操作")
+		s.auditLog(r, "rename", "/"+oldRel+" → /"+newRel, denied)
+		writeErr(w, http.StatusForbidden, denied)
+		return
 	}
 
 	cli, err := s.s3Client()
