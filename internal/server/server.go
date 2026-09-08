@@ -156,7 +156,9 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /api/upload", s.requireUserAPI(s.handleUpload))
 	m.HandleFunc("GET /api/download", s.requireUser(s.handleDownload))
 	m.HandleFunc("POST /api/delete", s.requireUserAPI(s.handleDelete))
-	m.HandleFunc("POST /api/rename", s.requireUserAPI(s.handleRename))
+	// 不套 requireUserAPI：未登录时它会返回 401，同样暴露了接口的存在。
+	// 权限与可见性由 handleRename 内部统一处理（非管理员一律 404）。
+	m.HandleFunc("POST /api/rename", s.handleRename)
 	m.HandleFunc("POST /api/mkdir", s.requireUserAPI(s.handleMkdir))
 
 	// 控制台（需要管理员；初始化模式下开放）

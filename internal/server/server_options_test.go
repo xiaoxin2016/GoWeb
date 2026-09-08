@@ -113,30 +113,76 @@ func TestWithoutIgnoreEmailUsesSMTP(t *testing.T) {
 	}
 }
 
-// 重命名仅管理员：普通用户被拒，管理员放行
-func TestRenameAdminOnly(t *testing.T) {
+// 重命名仅管理员可用，且对其他人不可见：响应必须与未知路由完全一致，
+// 无法据此判断该接口是否存在。
+func TestRenameInvisibleToNonAdmin(t *testing.T) {
 	srv := newTestServer(t, Options{IgnoreEmail: true})
 	userCk := login(t, srv, "user@test.com")
-	adminCk := login(t, srv, "admin@test.com")
+
+	// 基准：一个确实不存在的接口
+	notFound := postJSON(t, srv, "/api/definitely-not-a-real-endpoint",
+		`{"path":"docs/a.txt","name":"b.txt"}`, userCk)
+	if notFound.Code != http.StatusNotFound {
+		t.Fatalf("基准用例应为 404，实际 %d", notFound.Code)
+	}
 
 	body := `{"path":"docs/a.txt","name":"b.txt"}`
+	cases := []struct {
+		name   string
+		cookie *http.Cookie
+		body   string
+	}{
+		{"普通用户", userCk, body},
+		{"未登录", nil, body},
+		{"普通用户 + 畸形 JSON", userCk, `{{{`}, // 不得因解析失败而返回 400
+		{"普通用户 + 空 body", userCk, ``},
+		{"未登录 + 畸形 JSON", nil, `{{{`},
+	}
+	for _, tc := range cases {
+		rec := postJSON(t, srv, "/api/rename", tc.body, tc.cookie)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s：应返回 404，实际 %d %s", tc.name, rec.Code, rec.Body)
+		}
+		if rec.Body.String() != notFound.Body.String() {
+			t.Errorf("%s：响应体应与未知路由一致\n  实际 %q\n  基准 %q",
+				tc.name, rec.Body.String(), notFound.Body.String())
+		}
+		if got, want := rec.Header().Get("Content-Type"), notFound.Header().Get("Content-Type"); got != want {
+			t.Errorf("%s：Content-Type 应与未知路由一致，实际 %q 基准 %q", tc.name, got, want)
+		}
+	}
+	// 响应里不得出现任何暗示该功能存在的字样
 	rec := postJSON(t, srv, "/api/rename", body, userCk)
-	if rec.Code != http.StatusForbidden {
-		t.Errorf("普通用户重命名应返回 403，实际 %d %s", rec.Code, rec.Body)
+	for _, word := range []string{"重命名", "管理员", "rename"} {
+		if strings.Contains(rec.Body.String(), word) {
+			t.Errorf("响应体不应包含 %q：%s", word, rec.Body)
+		}
 	}
-	if !strings.Contains(rec.Body.String(), "仅管理员") {
-		t.Errorf("应说明仅管理员可操作，实际 %s", rec.Body)
-	}
+}
 
-	// 管理员越过权限检查后进入存储阶段（此处 S3 未配置，故为 503 而非 403）
-	rec = postJSON(t, srv, "/api/rename", body, adminCk)
-	if rec.Code == http.StatusForbidden {
+// 管理员可以正常使用重命名（不会被权限拦下）
+func TestRenameAllowedForAdmin(t *testing.T) {
+	srv := newTestServer(t, Options{IgnoreEmail: true})
+	adminCk := login(t, srv, "admin@test.com")
+
+	rec := postJSON(t, srv, "/api/rename", `{"path":"docs/a.txt","name":"b.txt"}`, adminCk)
+	// 越过权限检查后进入存储阶段（此处 S3 未配置，故为 503）
+	if rec.Code == http.StatusNotFound || rec.Code == http.StatusForbidden {
 		t.Errorf("管理员不应被权限拦截，实际 %d %s", rec.Code, rec.Body)
 	}
+}
 
-	// 普通用户的上传/删除不受影响，仍只受目录只读约束
-	rec = postJSON(t, srv, "/api/delete", `{"paths":["docs/a.txt"]}`, userCk)
-	if rec.Code == http.StatusForbidden {
+// 普通用户的上传/删除权限不受本次调整影响
+func TestNonAdminKeepsOtherWrites(t *testing.T) {
+	srv := newTestServer(t, Options{IgnoreEmail: true})
+	userCk := login(t, srv, "user@test.com")
+
+	rec := postJSON(t, srv, "/api/delete", `{"paths":["docs/a.txt"]}`, userCk)
+	if rec.Code == http.StatusForbidden || rec.Code == http.StatusNotFound {
 		t.Errorf("普通用户删除不应被拒，实际 %d %s", rec.Code, rec.Body)
+	}
+	rec = postJSON(t, srv, "/api/mkdir", `{"dir":"","name":"newdir"}`, userCk)
+	if rec.Code == http.StatusForbidden || rec.Code == http.StatusNotFound {
+		t.Errorf("普通用户新建文件夹不应被拒，实际 %d %s", rec.Code, rec.Body)
 	}
 }
