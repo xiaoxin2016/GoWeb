@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/xiaoxin2016/goweb/internal/auth"
@@ -58,7 +57,7 @@ func (s *Server) handleSendCode(w http.ResponseWriter, r *http.Request) {
 	}
 	if !cfg.IsAllowed(email) {
 		// 与发送成功返回一致的提示，避免探测哪些邮箱被允许
-		writeJSON(w, http.StatusOK, map[string]string{"message": "如果该邮箱被允许登录，验证码已发送"})
+		sentOK(w)
 		return
 	}
 
@@ -68,10 +67,10 @@ func (s *Server) handleSendCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// --ignore-email：不投递邮件，验证码直接打印到控制台，后续流程不变
+	// --ignore-email：完全不碰 SMTP，验证码直接打印到控制台
 	if s.opts.IgnoreEmail {
-		log.Printf("[ignore-email] %s 的登录验证码: %s（10 分钟内有效）", email, code)
-		writeJSON(w, http.StatusOK, map[string]string{"message": "如果该邮箱被允许登录，验证码已发送"})
+		s.codeToConsole("ignore-email", email, code)
+		sentOK(w)
 		return
 	}
 
@@ -79,14 +78,31 @@ func (s *Server) handleSendCode(w http.ResponseWriter, r *http.Request) {
 		cfg.Title, code)
 	if err := mailer.Send(cfg.SMTP, email, fmt.Sprintf("【%s】登录验证码", cfg.Title), body); err != nil {
 		log.Printf("发送验证码到 %s 失败: %v", email, err)
-		// 调试模式：邮件发送失败时把验证码打到日志，避免管理员被锁在门外。
-		if os.Getenv("GOWEB_DEBUG_CODE") == "1" {
-			log.Printf("[调试] %s 的验证码: %s", email, code)
+		// GOWEB_DEBUG_CODE：投递失败时回退到控制台，并让登录流程照常继续。
+		// 只把验证码打进日志却仍向前端报错是没有意义的——用户根本走不到
+		// 输入验证码那一步，这个兜底也就形同虚设。
+		if s.opts.DebugCode {
+			s.codeToConsole("debug-code", email, code)
+			sentOK(w)
+			return
 		}
 		writeErr(w, http.StatusBadGateway, fmt.Errorf("邮件发送失败，请联系管理员检查 SMTP 配置"))
 		return
 	}
+	sentOK(w)
+}
+
+// sentOK 返回发码成功的统一提示。
+// 无论真实投递、--ignore-email 还是投递失败回退，响应都必须一致：
+// 措辞有别就会泄露邮箱是否在允许名单内，也会暴露 SMTP 的可用状态。
+func sentOK(w http.ResponseWriter) {
 	writeJSON(w, http.StatusOK, map[string]string{"message": "如果该邮箱被允许登录，验证码已发送"})
+}
+
+// codeToConsole 把验证码打印到服务端控制台，供 --ignore-email 与
+// GOWEB_DEBUG_CODE 两条路径共用，保证格式一致、便于检索。
+func (s *Server) codeToConsole(mode, email, code string) {
+	log.Printf("[%s] %s 的登录验证码: %s（10 分钟内有效）", mode, email, code)
 }
 
 // handleVerify 校验验证码并签发会话。

@@ -22,9 +22,14 @@ const sessionCookie = "goweb_session"
 
 // Options 启动参数。
 type Options struct {
-	// IgnoreEmail 为 true 时不经 SMTP 投递，验证码直接打印到服务端控制台，
-	// 登录流程其余环节不变。用于未配置邮件服务的内网部署与排障。
+	// IgnoreEmail（--ignore-email）为 true 时不经 SMTP 投递，验证码直接
+	// 打印到服务端控制台，登录流程其余环节不变。
+	// 用于未配置邮件服务的内网部署与排障。
 	IgnoreEmail bool
+	// DebugCode（环境变量 GOWEB_DEBUG_CODE=1）是 IgnoreEmail 的"兜底"版本：
+	// 正常走 SMTP，仅当投递失败时回退为打印到控制台，且同样让登录流程继续。
+	// 未开启时投递失败即返回错误，不允许继续。
+	DebugCode bool
 }
 
 // Server 应用 HTTP 服务。

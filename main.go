@@ -17,7 +17,7 @@ func main() {
 	dataDir := getenv("GOWEB_DATA_DIR", "data")
 	addr := getenv("GOWEB_LISTEN", ":8080")
 
-	var opts server.Options
+	opts := server.Options{DebugCode: os.Getenv("GOWEB_DEBUG_CODE") == "1"}
 	for _, arg := range os.Args[1:] {
 		switch arg {
 		case "-v", "--version", "version":
@@ -46,9 +46,13 @@ func main() {
 	}
 
 	log.Printf("GoWeb %s 已启动，监听 %s", version, addr)
-	if opts.IgnoreEmail {
+	switch {
+	case opts.IgnoreEmail:
 		log.Printf("警告：已启用 --ignore-email，登录验证码将直接打印到本控制台而不发送邮件；" +
 			"任何能看到本进程日志的人都能登录，请勿用于生产环境")
+	case opts.DebugCode:
+		log.Printf("警告：已设置 GOWEB_DEBUG_CODE=1，邮件投递失败时将把登录验证码打印到本控制台" +
+			"并允许继续登录；任何能看到本进程日志的人都能登录，请勿用于生产环境")
 	}
 	if len(store.Get().Auth.AdminEmails) == 0 {
 		log.Printf("首次运行：请访问 http://localhost%s/console 完成初始化配置", addr)
@@ -79,5 +83,8 @@ func usage() {
 环境变量:
   GOWEB_LISTEN     监听地址，默认 :8080
   GOWEB_DATA_DIR   数据目录，默认 data
+  GOWEB_DEBUG_CODE 设为 1 时，仅在邮件投递失败的情况下退回到
+                   --ignore-email 的行为（验证码打印到控制台并允许继续登录）；
+                   未设置则投递失败即报错，不允许继续
 `, version)
 }

@@ -168,13 +168,24 @@ docker run -d -p 8080:8080 -v goweb-data:/app/data goweb
 > 启动时会打印醒目告警，请勿用于生产环境。systemd 部署可在服务文件的
 > `ExecStart=/opt/goweb/goweb` 后追加该参数。
 
+`--ignore-email` 与 `GOWEB_DEBUG_CODE=1` 的区别：
+
+| | SMTP 正常 | SMTP 故障 |
+|---|---|---|
+| `--ignore-email` | 完全不碰 SMTP，验证码打印到控制台 | 同左 |
+| `GOWEB_DEBUG_CODE=1` | 正常投递邮件，不打印验证码 | 退回控制台打印，登录流程继续 |
+| 两者都未开启 | 正常投递邮件 | 返回错误，不允许继续登录 |
+
+需要等待 SMTP 超时（最长 15 秒）才会触发 `GOWEB_DEBUG_CODE` 的回退；若邮件服务
+长期不可用，用 `--ignore-email` 可以直接跳过这段等待。
+
 ### 环境变量
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
 | `GOWEB_LISTEN` | `:8080` | 监听地址 |
 | `GOWEB_DATA_DIR` | `data` | 数据目录（配置与密钥） |
-| `GOWEB_DEBUG_CODE` | 关闭 | 设为 `1` 时，邮件发送失败会把验证码打印到日志（仅供调试，生产环境勿开） |
+| `GOWEB_DEBUG_CODE` | 关闭 | 设为 `1` 时，**仅在邮件投递失败**的情况下退回到 `--ignore-email` 的行为：验证码打印到控制台，登录流程照常继续（仅供调试，生产环境勿开） |
 
 ### 常见对象存储配置示例
 

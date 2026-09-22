@@ -1,9 +1,14 @@
 package server
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
+	"log"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -328,5 +333,127 @@ func TestRequesterDescDistinguishesStates(t *testing.T) {
 	logged.AddCookie(userCk)
 	if got := srv.requesterDesc(logged); got != "user@test.com" {
 		t.Errorf("已登录用户应记录邮箱，实际 %q", got)
+	}
+}
+
+// GOWEB_DEBUG_CODE：SMTP 投递失败时应退回控制台并让登录流程继续，
+// 而不是把验证码打进日志却仍向前端报错——那样用户根本走不到输入验证码
+// 那一步，兜底形同虚设。
+func TestDebugCodeFallsBackWhenSMTPFails(t *testing.T) {
+	srv := newTestServer(t, Options{DebugCode: true}) // SMTP 指向不可达端口
+
+	rec := postJSON(t, srv, "/api/auth/send-code", `{"email":"user@test.com"}`, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("投递失败时应回退并返回成功，实际 %d %s", rec.Code, rec.Body)
+	}
+	// 响应必须与正常投递时完全一致，不泄露 SMTP 是否可用
+	ok := postJSON(t, newTestServer(t, Options{IgnoreEmail: true}),
+		"/api/auth/send-code", `{"email":"user@test.com"}`, nil)
+	if rec.Body.String() != ok.Body.String() {
+		t.Errorf("响应应与正常发送一致\n  实际 %q\n  期望 %q", rec.Body.String(), ok.Body.String())
+	}
+
+	// 验证码确实可用，能走完登录
+	code := srv.codes.Peek("user@test.com")
+	if code == "" {
+		t.Fatal("回退后仍应有可用的验证码")
+	}
+	rec = postJSON(t, srv, "/api/auth/verify",
+		`{"email":"user@test.com","code":"`+code+`"}`, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("应能凭控制台验证码完成登录，实际 %d %s", rec.Code, rec.Body)
+	}
+}
+
+// 未设置 GOWEB_DEBUG_CODE 时维持原行为：投递失败即报错，不允许继续
+func TestWithoutDebugCodeSMTPFailureStops(t *testing.T) {
+	srv := newTestServer(t, Options{})
+
+	rec := postJSON(t, srv, "/api/auth/send-code", `{"email":"user@test.com"}`, nil)
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("未开启兜底时投递失败应报错，实际 %d %s", rec.Code, rec.Body)
+	}
+	if !strings.Contains(rec.Body.String(), "邮件发送失败") {
+		t.Errorf("应提示邮件发送失败，实际 %s", rec.Body)
+	}
+}
+
+// SMTP 正常时不应触发回退，也不该把验证码打进日志
+func TestDebugCodeSilentWhenSMTPWorks(t *testing.T) {
+	// 用一条能正常收信的假 SMTP
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer conn.Close()
+				r := bufio.NewReader(conn)
+				w := func(s string) { conn.Write([]byte(s + "\r\n")) }
+				w("220 fake ESMTP")
+				for {
+					line, err := r.ReadString('\n')
+					if err != nil {
+						return
+					}
+					switch cmd := strings.ToUpper(strings.TrimSpace(line)); {
+					case strings.HasPrefix(cmd, "EHLO"), strings.HasPrefix(cmd, "HELO"):
+						w("250 fake")
+					case cmd == "DATA":
+						w("354 go")
+						for {
+							l, err := r.ReadString('\n')
+							if err != nil || strings.TrimRight(l, "\r\n") == "." {
+								break
+							}
+						}
+						w("250 ok")
+					case cmd == "QUIT":
+						w("221 bye")
+						return
+					default:
+						w("250 ok")
+					}
+				}
+			}()
+		}
+	}()
+
+	store, err := config.Load(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	if err := store.Update(func(c *config.Config) {
+		c.Auth.AdminEmails = []string{"admin@test.com"}
+		c.Auth.AllowedEmails = []string{"*@test.com"}
+		c.SMTP = config.SMTPConfig{Host: "127.0.0.1", Port: port, From: "noreply@test.com", Encryption: "none"}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	srv, err := New(store, Options{DebugCode: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var logBuf bytes.Buffer
+	log.SetOutput(&logBuf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	rec := postJSON(t, srv, "/api/auth/send-code", `{"email":"user@test.com"}`, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("正常投递应成功，实际 %d %s", rec.Code, rec.Body)
+	}
+	if strings.Contains(logBuf.String(), "debug-code") {
+		t.Errorf("SMTP 正常时不应回退到控制台打印：%s", logBuf.String())
+	}
+	if code := srv.codes.Peek("user@test.com"); strings.Contains(logBuf.String(), code) {
+		t.Errorf("SMTP 正常时验证码不应出现在日志里：%s", logBuf.String())
 	}
 }
