@@ -17,7 +17,7 @@ func main() {
 	dataDir := getenv("GOWEB_DATA_DIR", "data")
 	addr := getenv("GOWEB_LISTEN", ":8080")
 
-	opts := server.Options{DebugCode: os.Getenv("GOWEB_DEBUG_CODE") == "1"}
+	opts := server.Options{Version: version, DebugCode: os.Getenv("GOWEB_DEBUG_CODE") == "1"}
 	for _, arg := range os.Args[1:] {
 		switch arg {
 		case "-v", "--version", "version":

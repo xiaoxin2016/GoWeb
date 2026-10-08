@@ -14,8 +14,8 @@
     {{range $i, $c := .Crumbs}}{{if $i}}<span class="sep">›</span>{{end}}<a href="{{$c.URL}}">{{$c.Name}}</a>{{end}}
   </nav>
   <div class="topbar-right">
-    {{if .IsAdmin}}<a class="btn btn-ghost" href="/console">控制台</a>{{end}}
     <span class="user-email" title="当前登录用户">{{.User}}</span>
+    {{if .IsAdmin}}<a class="btn btn-ghost" href="/console">控制台</a>{{end}}
     <form method="post" action="/api/auth/logout" class="inline-form">
       <button class="btn btn-ghost" type="submit">退出</button>
     </form>
@@ -92,11 +92,13 @@
         <td class="col-check">{{if not .ReadOnly}}<input type="checkbox" class="row-check">{{end}}</td>
         <td class="col-name">
           {{if .IsDir}}
-          <a href="/files/{{.Path}}" class="entry-link">
-            <svg class="icon icon-folder" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
-            <span>{{.Name}}</span>
-          </a>
-          {{if .ReadOnly}}<span class="badge-readonly" title="只读目录：仅管理员可上传和删除">只读</span>{{end}}
+          <div class="name-cell">
+            <a href="/files/{{.Path}}" class="entry-link">
+              <svg class="icon icon-folder" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+              <span>{{.Name}}</span>
+            </a>
+            {{if .ReadOnly}}<span class="badge-readonly" title="只读目录：仅管理员可上传和删除">只读</span>{{end}}
+          </div>
           {{else}}
           <a href="/api/download?path={{.Path}}" class="entry-link" title="点击下载">
             <svg class="icon icon-file" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>
@@ -131,7 +133,7 @@
   </table>
   {{end}}
 
-  <footer class="footer">{{.Title}}</footer>
+  <footer class="footer">{{version}}</footer>
 </main>
 
 <div class="drop-hint" id="drop-hint">松开鼠标上传到当前目录</div>

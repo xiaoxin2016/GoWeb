@@ -46,8 +46,13 @@ body {
   border-bottom: 1px solid var(--line);
   position: sticky; top: 0; z-index: 10;
 }
-/* 纯文本站点标题：仅海军蓝主题在顶栏展示，浅色主题由面包屑首项承担 */
+/* 纯文本站点标题：文件浏览页由面包屑首项承担，控制台等无面包屑的页面直接展示 */
 .brand { display: none; }
+.topbar-plain .brand {
+  display: block; min-width: 0;
+  font-size: 15px; color: var(--accent); text-decoration: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .crumbs { font-size: 15px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .crumbs a { color: var(--accent); text-decoration: none; padding: 2px 4px; border-radius: 4px; }
 .crumbs a:hover { background: var(--hover); }
@@ -239,16 +244,18 @@ body.dragging .drop-hint { display: flex; }
 .dirperm-missing { color: var(--text-dim); font-size: 12px; font-style: normal; }
 .dirperm-empty { color: var(--text-dim); font-size: 13px; padding: 8px 0; }
 
+/* 目录名与“只读”标签同处一个 flex 行，按中线对齐；
+   若各自按行内基线排列，图标撑高的行盒会让标签明显偏下 */
+.name-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .badge-readonly {
-  display: inline-block;
-  margin-left: 8px;
-  padding: 1px 7px;
+  flex-shrink: 0;
+  padding: 0 7px;
   border-radius: 10px;
   font-size: 11px;
+  line-height: 18px;
   background: var(--hover);
   color: var(--text-dim);
   border: 1px solid var(--line);
-  vertical-align: middle;
 }
 .readonly-hint {
   display: inline-flex; align-items: center; gap: 7px;

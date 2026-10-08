@@ -22,6 +22,9 @@ const sessionCookie = "goweb_session"
 
 // Options 启动参数。
 type Options struct {
+	// Version 程序版本号（如 v1.5.0），展示在页面底部
+	Version string
+
 	// IgnoreEmail（--ignore-email）为 true 时不经 SMTP 投递，验证码直接
 	// 打印到服务端控制台，登录流程其余环节不变。
 	// 用于未配置邮件服务的内网部署与排障。
@@ -53,7 +56,8 @@ func New(cfg *config.Store, opts Options) (*Server, error) {
 		"fmtTime":     fmtTime,
 		"actionLabel": actionLabel,
 		// theme 每次渲染时读取当前配置，控制台切换主题后无需重启即生效
-		"theme": func() string { return cfg.Get().ThemeName() },
+		"theme":   func() string { return cfg.Get().ThemeName() },
+		"version": func() string { return opts.Version },
 	}).ParseFS(web.FS, "templates/*.html")
 	if err != nil {
 		return nil, err

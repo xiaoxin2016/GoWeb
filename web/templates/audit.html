@@ -7,11 +7,12 @@
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<header class="topbar">
+<header class="topbar topbar-plain">
   <a class="brand" href="/files/">{{.Title}}</a>
-  <nav class="crumbs"><a href="/console">← 返回控制台</a></nav>
   <div class="topbar-right">
     <span class="user-email">{{.User}}</span>
+    <a class="btn btn-ghost" href="/console">控制台</a>
+    <a class="btn btn-ghost" href="/files/">文件浏览</a>
     <form method="post" action="/api/auth/logout" class="inline-form">
       <button class="btn btn-ghost" type="submit">退出</button>
     </form>
@@ -64,7 +65,7 @@
   <p class="audit-note">显示最近 200 条（内存缓存最近 500 条）。完整历史保存在数据目录的
   <code>audit.log</code>（JSON Lines 格式）中；如已开启 rsyslog 外发，事件也会实时发送到日志服务器。</p>
 
-  <footer class="footer">{{.Title}}</footer>
+  <footer class="footer">{{version}}</footer>
 </main>
 </body>
 </html>

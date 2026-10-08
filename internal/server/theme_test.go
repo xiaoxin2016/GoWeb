@@ -104,3 +104,15 @@ func TestThemeAdminOnly(t *testing.T) {
 		t.Errorf("普通用户不应改动主题，实际 %q", got)
 	}
 }
+
+// 页面底部展示版本号而非站点名称
+func TestFooterShowsVersion(t *testing.T) {
+	srv := newTestServer(t, Options{IgnoreEmail: true, Version: "v9.8.7"})
+	adminCk := login(t, srv, "admin@test.com")
+	for _, path := range []string{"/console", "/console/audit"} {
+		body := do(t, srv, http.MethodGet, path, "", adminCk).Body.String()
+		if !strings.Contains(body, `<footer class="footer">v9.8.7</footer>`) {
+			t.Errorf("%s 底部应展示版本号", path)
+		}
+	}
+}
