@@ -130,6 +130,7 @@ var adminRoutes = []struct {
 	{http.MethodPost, "/console/auth", ""},
 	{http.MethodPost, "/console/dirperm", ""},
 	{http.MethodPost, "/console/notice", ""},
+	{http.MethodPost, "/console/theme", "theme=navy"},
 	{http.MethodPost, "/console/syslog", ""},
 	{http.MethodPost, "/api/console/test-s3", `{}`},
 	{http.MethodPost, "/api/console/test-smtp", `{}`},

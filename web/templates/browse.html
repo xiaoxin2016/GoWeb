@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="{{theme}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -9,8 +9,11 @@
 </head>
 <body>
 <header class="topbar">
+  <span class="brand">{{.Title}}</span>
   <nav class="crumbs">
-    {{range $i, $c := .Crumbs}}{{if $i}}<span class="sep">›</span>{{end}}<a href="{{$c.URL}}">{{$c.Name}}</a>{{end}}
+    {{$navy := eq theme "navy"}}
+    {{- /* 海军蓝主题的顶栏已展示站点标题，根目录改称“全部文件”避免重复 */ -}}
+    {{range $i, $c := .Crumbs}}{{if $i}}<span class="sep">›</span>{{end}}<a href="{{$c.URL}}">{{if and $navy (not $i)}}全部文件{{else}}{{$c.Name}}{{end}}</a>{{end}}
   </nav>
   <div class="topbar-right">
     {{if .IsAdmin}}<a class="btn btn-ghost" href="/console">控制台</a>{{end}}

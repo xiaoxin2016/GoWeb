@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="{{theme}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,6 +8,7 @@
 </head>
 <body>
 <header class="topbar">
+  <span class="brand">{{.Title}}</span>
   <nav class="crumbs"><a href="/console">← 返回控制台</a></nav>
   <div class="topbar-right">
     <span class="user-email">{{.User}}</span>

@@ -52,6 +52,8 @@ func New(cfg *config.Store, opts Options) (*Server, error) {
 		"humanSize":   humanSize,
 		"fmtTime":     fmtTime,
 		"actionLabel": actionLabel,
+		// theme 每次渲染时读取当前配置，控制台切换主题后无需重启即生效
+		"theme": func() string { return cfg.Get().ThemeName() },
 	}).ParseFS(web.FS, "templates/*.html")
 	if err != nil {
 		return nil, err
@@ -178,6 +180,7 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /console/auth", s.requireAdmin(setupOpen, s.handleSaveAuth))
 	m.HandleFunc("POST /console/dirperm", s.requireAdmin(setupOpen, s.handleSaveDirPerm))
 	m.HandleFunc("POST /console/notice", s.requireAdmin(setupOpen, s.handleSaveNotice))
+	m.HandleFunc("POST /console/theme", s.requireAdmin(setupOpen, s.handleSaveTheme))
 	m.HandleFunc("POST /console/syslog", s.requireAdmin(setupOpen, s.handleSaveSyslog))
 	m.HandleFunc("POST /api/console/test-s3", s.requireAdminAPI(setupOpen, s.handleTestS3))
 	m.HandleFunc("POST /api/console/test-smtp", s.requireAdminAPI(setupOpen, s.handleTestSMTP))

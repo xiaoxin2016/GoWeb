@@ -122,14 +122,53 @@ func (n NoticeConfig) LevelClass() string {
 	}
 }
 
+// 界面主题。
+const (
+	ThemeLight = "light" // 浅色（默认）
+	ThemeNavy  = "navy"  // 海军蓝
+)
+
+// ThemeOption 控制台可选的一项界面主题。
+type ThemeOption struct {
+	Value string
+	Label string
+}
+
+// Themes 列出全部可选主题，第一项为默认主题。
+var Themes = []ThemeOption{
+	{ThemeLight, "浅色"},
+	{ThemeNavy, "海军蓝"},
+}
+
+// ValidTheme 报告 t 是否为受支持的主题。
+func ValidTheme(t string) bool {
+	for _, o := range Themes {
+		if o.Value == t {
+			return true
+		}
+	}
+	return false
+}
+
 // Config 应用完整配置。
 type Config struct {
-	Title  string       `json:"title"`
+	Title string `json:"title"`
+	// Theme 界面主题，取值见 Themes；为空或无法识别时按默认主题处理
+	Theme  string       `json:"theme,omitempty"`
 	S3     S3Config     `json:"s3"`
 	SMTP   SMTPConfig   `json:"smtp"`
 	Auth   AuthConfig   `json:"auth"`
 	Syslog SyslogConfig `json:"syslog"`
 	Notice NoticeConfig `json:"notice"`
+}
+
+// ThemeName 返回实际生效的主题：未配置或配置文件中被手改为未知值时退回默认主题，
+// 保证模板拿到的永远是一个已知值。
+func (c Config) ThemeName() string {
+	if ValidTheme(c.Theme) {
+		return c.Theme
+	}
+	return Themes[0].Value
 }
 
 // SetupMode 报告系统是否尚未完成初始化（未配置任何管理员）。

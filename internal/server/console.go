@@ -31,6 +31,7 @@ type consoleData struct {
 	// TopDirs 根目录下的一级目录及其只读状态，供目录权限设置使用
 	TopDirs []dirPerm
 	DirsErr string // 读取目录列表失败时的提示
+	Themes  []config.ThemeOption
 }
 
 // dirPerm 一个一级目录的权限展示项。
@@ -91,6 +92,7 @@ func (s *Server) handleConsole(w http.ResponseWriter, r *http.Request) {
 		HasSMTPSecret: cfg.SMTP.Password != "",
 		AdminsText:    strings.Join(cfg.Auth.AdminEmails, "\n"),
 		AllowedText:   strings.Join(cfg.Auth.AllowedEmails, "\n"),
+		Themes:        config.Themes,
 	})
 }
 
@@ -295,6 +297,24 @@ func (s *Server) handleSaveNotice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectConsole(w, r, "公告栏配置已保存", "")
+}
+
+// handleSaveTheme 保存界面主题，对所有页面（含登录页）即时生效。
+func (s *Server) handleSaveTheme(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		redirectConsole(w, r, "", "表单解析失败")
+		return
+	}
+	theme := r.FormValue("theme")
+	if !config.ValidTheme(theme) {
+		redirectConsole(w, r, "", "不支持的主题")
+		return
+	}
+	if err := s.cfg.Update(func(c *config.Config) { c.Theme = theme }); err != nil {
+		redirectConsole(w, r, "", "保存失败: "+err.Error())
+		return
+	}
+	redirectConsole(w, r, "界面主题已保存", "")
 }
 
 // handleSaveSyslog 保存审计日志外发（rsyslog）配置并立即生效。

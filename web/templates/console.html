@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="{{theme}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,6 +8,7 @@
 </head>
 <body>
 <header class="topbar">
+  <span class="brand">{{.Title}}</span>
   <nav class="crumbs"><a href="/files/">← 返回文件浏览</a></nav>
   <div class="topbar-right">
     {{if .User}}
@@ -181,6 +182,26 @@
           <label><input type="checkbox" name="enabled" {{if .Cfg.Notice.Enabled}}checked{{end}}> 启用公告栏</label>
           <label><input type="checkbox" name="dismissible" {{if .Cfg.Notice.Dismissible}}checked{{end}}> 允许用户关闭（公告内容变更后会重新展示）</label>
         </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">保存</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>界面主题</h2>
+    <p class="card-hint">主题对全部页面（含登录页）和所有用户生效，保存后立即可见。</p>
+    <form method="post" action="/console/theme">
+      <div class="theme-options">
+        {{$cur := theme}}
+        {{range .Themes}}
+        <label class="theme-option">
+          <input type="radio" name="theme" value="{{.Value}}" {{if eq .Value $cur}}checked{{end}}>
+          <span class="theme-swatch theme-swatch-{{.Value}}" aria-hidden="true"><i></i><i></i></span>
+          <span class="theme-name">{{.Label}}</span>
+        </label>
+        {{end}}
       </div>
       <div class="form-actions">
         <button class="btn btn-primary" type="submit">保存</button>
