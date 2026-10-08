@@ -390,10 +390,10 @@ html[data-theme="navy"] {
 }
 [data-theme="navy"] body { font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
 
-/* 顶栏：渐变底色 + 纯文本标题，面包屑下沉为白色导航条 */
+/* 顶栏：渐变底色 + 纯文本标题（兼作回到根目录的链接），子目录路径接在标题之后 */
 [data-theme="navy"] .topbar {
-  flex-wrap: wrap;
-  padding: 0;
+  gap: 4px 12px;
+  padding: 12px 24px;
   background: linear-gradient(135deg, var(--navy-dark), var(--navy) 55%, var(--navy-light));
   color: #fff;
   border-bottom: none;
@@ -401,18 +401,17 @@ html[data-theme="navy"] {
 }
 [data-theme="navy"] .brand {
   display: block;
-  flex: 1; min-width: 0;
-  padding: 14px 24px;
+  flex: none; max-width: 45%;
+  color: #fff; text-decoration: none;
   font-size: 19px; font-weight: 600; letter-spacing: .5px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-[data-theme="navy"] .topbar-right { padding: 0 24px; }
-@media (max-width: 600px) {
-  /* 窄屏：标题独占一行，避免被右侧按钮挤成省略号 */
-  [data-theme="navy"] .brand { flex-basis: 100%; padding: 12px 16px 6px; font-size: 17px; }
-  [data-theme="navy"] .topbar-right { padding: 0 16px 10px; }
-  [data-theme="navy"] .crumbs { padding: 8px 12px; }
-}
+[data-theme="navy"] .crumbs { flex: 1; min-width: 0; font-size: 14px; }
+/* 根目录即标题本身，路径中不再重复；首个分隔符恰好接在标题之后 */
+[data-theme="navy"] .crumbs-path > a:first-child { display: none; }
+[data-theme="navy"] .crumbs a { color: rgba(255, 255, 255, .9); }
+[data-theme="navy"] .crumbs a:hover { color: #fff; background: rgba(255, 255, 255, .14); }
+[data-theme="navy"] .crumbs .sep { color: rgba(255, 255, 255, .5); }
 [data-theme="navy"] .user-email { color: rgba(255, 255, 255, .85); }
 [data-theme="navy"] .topbar .btn-ghost {
   background: rgba(255, 255, 255, .12);
@@ -422,16 +421,12 @@ html[data-theme="navy"] {
   font-size: 13px;
 }
 [data-theme="navy"] .topbar .btn-ghost:hover { background: rgba(255, 255, 255, .24); }
-[data-theme="navy"] .crumbs {
-  order: 3;
-  flex: 0 0 100%;
-  padding: 8px 20px;
-  background: var(--panel);
-  border-bottom: 2px solid var(--line);
-  font-size: 14px;
+@media (max-width: 600px) {
+  /* 窄屏：标题与按钮一行，路径换到下一行（仍在顶栏内） */
+  [data-theme="navy"] .topbar { flex-wrap: wrap; padding: 10px 16px; }
+  [data-theme="navy"] .brand { flex: 1; max-width: none; font-size: 17px; }
+  [data-theme="navy"] .crumbs { order: 3; flex-basis: 100%; }
 }
-[data-theme="navy"] .crumbs a { color: var(--navy); font-weight: 600; }
-[data-theme="navy"] .crumbs a:hover { color: var(--navy-light); background: var(--navy-soft); }
 
 /* 按钮 */
 [data-theme="navy"] .btn-primary { background: var(--navy); border-color: var(--navy); }
