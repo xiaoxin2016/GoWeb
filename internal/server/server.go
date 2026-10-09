@@ -44,6 +44,8 @@ type Server struct {
 	audit *audit.Logger
 	opts  Options
 
+	lists listCache // 目录列表短期缓存，供翻页与搜索复用
+
 	s3mu  sync.Mutex
 	s3    *storage.Client
 	s3rev int64 // 构建 s3 客户端时的配置修订号
@@ -53,6 +55,7 @@ type Server struct {
 func New(cfg *config.Store, opts Options) (*Server, error) {
 	tpl, err := template.New("").Funcs(template.FuncMap{
 		"humanSize":   humanSize,
+		"num":         thousands,
 		"fmtTime":     fmtTime,
 		"actionLabel": actionLabel,
 		// theme 每次渲染时读取当前配置，控制台切换主题后无需重启即生效

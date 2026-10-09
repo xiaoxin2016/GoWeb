@@ -31,6 +31,7 @@ func uploadErr(w http.ResponseWriter, r *http.Request, status int, err error) {
 // handleUpload 处理文件上传（multipart 流式转发到 S3，不落盘）。
 // 目录通过查询参数 dir 指定；支持一次上传多个文件。
 func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
+	defer s.lists.invalidate() // 无论成败，目录内容都可能已变化
 	dir, err := cleanDir(r.URL.Query().Get("dir"))
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
@@ -153,6 +154,7 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 
 // handleDelete 删除若干文件或文件夹（文件夹路径以 "/" 结尾，递归删除）。
 func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
+	defer s.lists.invalidate() // 无论成败，目录内容都可能已变化
 	var req struct {
 		Paths []string `json:"paths"`
 	}
@@ -207,6 +209,7 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 
 // handleMkdir 在指定目录下新建文件夹。
 func (s *Server) handleMkdir(w http.ResponseWriter, r *http.Request) {
+	defer s.lists.invalidate() // 无论成败，目录内容都可能已变化
 	var req struct {
 		Dir  string `json:"dir"`
 		Name string `json:"name"`
@@ -247,6 +250,7 @@ func (s *Server) handleMkdir(w http.ResponseWriter, r *http.Request) {
 // handleRename 重命名文件或文件夹（在原目录内改名），仅管理员可用。
 // 请求体：{"path": "docs/a.txt", "name": "b.txt"}；文件夹路径以 "/" 结尾。
 func (s *Server) handleRename(w http.ResponseWriter, r *http.Request) {
+	defer s.lists.invalidate() // 无论成败，目录内容都可能已变化
 	// 权限与可见性由 requireAdminAPI(adminStrict) 统一保证：
 	// 非管理员在进入本函数之前就已收到与未知路由一致的 404。
 	var req struct {

@@ -268,4 +268,14 @@
       if (paths.length) deletePaths(paths);
     });
   }
+
+  // ---- 分页 ----
+  // 每页条数写入 Cookie，进入其他目录时由服务端沿用；切换后回到第一页
+  const pageSize = $('page-size');
+  if (pageSize) {
+    pageSize.addEventListener('change', () => {
+      document.cookie = 'goweb_page_size=' + pageSize.value + '; path=/; max-age=31536000; SameSite=Lax';
+      pageSize.form.submit();
+    });
+  }
 })();

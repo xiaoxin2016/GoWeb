@@ -169,6 +169,83 @@ body {
 .action:hover { color: var(--accent); background: var(--hover); }
 .action-delete:hover { color: var(--danger); }
 
+/* ---- 搜索与分页 ---- */
+.search-box {
+  position: relative;
+  display: flex; align-items: center;
+  margin-left: auto;
+  width: 260px; max-width: 100%;
+}
+.search-box svg {
+  position: absolute; left: 10px;
+  width: 16px; height: 16px; fill: var(--text-dim);
+  pointer-events: none;
+}
+.search-box input {
+  width: 100%;
+  padding: 7px 30px 7px 32px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 14px; font-family: inherit;
+}
+.search-box input:focus { outline: none; border-color: var(--accent); }
+.search-clear {
+  position: absolute; right: 6px;
+  width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 4px;
+  color: var(--text-dim); text-decoration: none; font-size: 18px; line-height: 1;
+}
+.search-clear:hover { background: var(--hover); color: var(--text); }
+@media (max-width: 720px) { .search-box { width: 100%; margin-left: 0; } }
+
+.pager {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 10px;
+  padding: 12px 2px 0;
+  font-size: 13px; color: var(--text-dim);
+}
+.pager b { color: var(--text); font-weight: 600; }
+.pager-info { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.pager-info select,
+.pager-cur input {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px; font-family: inherit;
+}
+.pager-info select { padding: 3px 6px; margin: 0 2px; }
+.pager-ctrl { display: flex; align-items: center; gap: 6px; }
+.pager-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 30px; height: 28px; padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--accent);
+  font-size: 15px; line-height: 1;
+  text-decoration: none;
+}
+a.pager-btn:hover { background: var(--hover); }
+.pager-btn[aria-disabled="true"] { color: var(--line); cursor: not-allowed; }
+.pager-cur { color: var(--text); margin: 0 4px; }
+.pager-cur input { width: 52px; padding: 3px 4px; margin: 0 2px; text-align: center; }
+.pager-info select:focus,
+.pager-cur input:focus { outline: none; border-color: var(--accent); }
+
+/* 窄屏：隐藏修改时间列，把宽度让给文件名；触屏设备没有悬停，操作按钮常显 */
+@media (max-width: 720px) {
+  .listing .col-time { display: none; }
+  .listing .col-size { width: 64px; }
+  .listing .col-actions { width: auto; }
+  .listing tbody td, .listing thead th { padding-left: 8px; padding-right: 8px; }
+  .entry-link { word-break: break-word; }
+}
+@media (hover: none) { .action { opacity: 1; } }
+
 .row-empty td { text-align: center; color: var(--text-dim); padding: 40px 0 !important; }
 
 /* ---- 提示条 ---- */
@@ -470,6 +547,13 @@ html[data-theme="navy"] {
 [data-theme="navy"] .field input:focus,
 [data-theme="navy"] .field select:focus,
 [data-theme="navy"] .field textarea:focus { outline: 2px solid var(--navy-light); border-color: transparent; }
+[data-theme="navy"] a.pager-btn { color: var(--navy); }
+[data-theme="navy"] .pager b,
+[data-theme="navy"] .pager-cur { color: var(--navy); }
+[data-theme="navy"] .search-box input,
+[data-theme="navy"] .pager-info select,
+[data-theme="navy"] .pager-cur input { background: #fff; }
+[data-theme="navy"] .search-box input:focus { outline: 2px solid var(--navy-light); border-color: transparent; }
 [data-theme="navy"] .notice-bar-info { background: var(--navy-soft); color: var(--navy); border-bottom-color: var(--line); }
 
 /* 登录页：整页渐变，白色卡片居中 */
