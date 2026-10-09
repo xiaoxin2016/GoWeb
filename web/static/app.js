@@ -110,8 +110,10 @@
   }
 
   // ---- 拖拽上传（支持文件夹：递归遍历目录树，保留相对路径）----
-  // walkEntry 遍历 FileSystemEntry，把文件收集为 {file, rel}
-  function walkEntry(entry, prefix, out) {
+  // walkEntry 遍历 FileSystemEntry：文件收集为 {file, rel} 放入 out；
+  // 空文件夹的相对路径放入 emptyDirs —— 对象存储里没有“目录”，非空文件夹会随
+  // 其中的文件自然出现，空文件夹则需要单独创建，否则拖进来什么也不会发生
+  function walkEntry(entry, prefix, out, emptyDirs) {
     return new Promise((resolve) => {
       if (entry.isFile) {
         entry.file(
@@ -119,13 +121,20 @@
           () => resolve() // 读取失败的条目跳过
         );
       } else if (entry.isDirectory) {
+        const path = prefix + entry.name;
         const reader = entry.createReader();
+        let empty = true;
         const readBatch = () => {
           // readEntries 每次最多返回约 100 条，必须循环调用直到为空
           reader.readEntries(async (ents) => {
-            if (!ents.length) { resolve(); return; }
+            if (!ents.length) {
+              if (empty) emptyDirs.push(path);
+              resolve();
+              return;
+            }
+            empty = false;
             for (const e of ents) {
-              await walkEntry(e, prefix + entry.name + '/', out);
+              await walkEntry(e, path + '/', out, emptyDirs);
             }
             readBatch();
           }, () => resolve());
@@ -138,7 +147,8 @@
   }
 
   async function collectDropped(dataTransfer) {
-    const out = [];
+    const files = [];
+    const emptyDirs = [];
     const entries = [];
     for (const item of dataTransfer.items || []) {
       if (item.kind !== 'file') continue;
@@ -147,19 +157,29 @@
         entries.push(entry);
       } else {
         const f = item.getAsFile();
-        if (f) out.push({ file: f, rel: f.name });
+        if (f) files.push({ file: f, rel: f.name });
       }
     }
     // 注意：webkitGetAsEntry 必须在 drop 事件同步阶段全部取出，
     // 之后再异步遍历目录内容
     for (const entry of entries) {
-      await walkEntry(entry, '', out);
+      await walkEntry(entry, '', files, emptyDirs);
     }
-    // 不支持 entry API 的旧浏览器回退到 files 列表（仅普通文件）
-    if (!out.length && dataTransfer.files.length) {
-      for (const f of dataTransfer.files) out.push({ file: f, rel: f.name });
+    // 仅当浏览器完全不支持 entry API 时才回退到 files 列表（仅普通文件）。
+    // 不能以“没收集到文件”为条件：拖入空文件夹时 files 列表里会出现
+    // 文件夹本身的占位项，把它当文件上传只会失败
+    if (!entries.length && !files.length && dataTransfer.files.length) {
+      for (const f of dataTransfer.files) files.push({ file: f, rel: f.name });
     }
-    return out;
+    return { files, emptyDirs };
+  }
+
+  // createDirs 在当前目录下依次创建空文件夹（rel 可含多级，如 "a/b"）
+  async function createDirs(rels) {
+    for (const rel of rels) {
+      const i = rel.lastIndexOf('/');
+      await api('/api/mkdir', { dir: dir + rel.slice(0, i + 1), name: rel.slice(i + 1) });
+    }
   }
 
   if (canWrite) {
@@ -180,8 +200,22 @@
       e.preventDefault();
       dragDepth = 0;
       document.body.classList.remove('dragging');
-      const items = await collectDropped(e.dataTransfer);
-      if (items.length) uploadItems(items);
+      const { files, emptyDirs } = await collectDropped(e.dataTransfer);
+      // 先建空文件夹再传文件：失败时直接报错并停止，避免只完成一半
+      if (emptyDirs.length) {
+        try {
+          await createDirs(emptyDirs);
+        } catch (err) {
+          toast(err.message, true);
+          return;
+        }
+      }
+      if (files.length) {
+        uploadItems(files);
+      } else if (emptyDirs.length) {
+        toast(emptyDirs.length === 1 ? '文件夹已创建' : '已创建 ' + emptyDirs.length + ' 个文件夹');
+        setTimeout(() => location.reload(), 500);
+      }
     });
   }
 
