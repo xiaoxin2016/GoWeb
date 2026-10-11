@@ -116,7 +116,7 @@ func (s *SessionStore) sweepLocked(now time.Time) {
 
 // sessionSnapshot 快照的落盘格式。令牌等同于凭据本身，文件只以 0600 写出。
 type sessionSnapshot struct {
-	SavedAt  time.Time         `json:"saved_at"`
+	SavedAt  string            `json:"saved_at"`
 	Sessions []sessionSnapItem `json:"sessions"`
 }
 
@@ -130,7 +130,7 @@ type sessionSnapItem struct {
 // 应在进程即将退出、已停止接收新请求之后调用。
 func (s *SessionStore) Save(path string) (int, error) {
 	now := time.Now()
-	snap := sessionSnapshot{SavedAt: now}
+	snap := sessionSnapshot{SavedAt: now.Format("2006-01-02 15:04:05")}
 	s.mu.Lock()
 	for token, ss := range s.m {
 		if now.After(ss.expires) {
@@ -159,10 +159,10 @@ func (s *SessionStore) Save(path string) (int, error) {
 
 // RestoreResult 恢复快照的结果，供调用方记录日志。
 type RestoreResult struct {
-	Found    bool      // 是否存在快照文件
-	Restored int       // 恢复的会话数
-	Expired  int       // 已过期而跳过的会话数
-	SavedAt  time.Time // 快照保存时间
+	Found    bool   // 是否存在快照文件
+	Restored int    // 恢复的会话数
+	Expired  int    // 已过期而跳过的会话数
+	SavedAt  string // 快照保存时间
 }
 
 // Restore 读回快照并立即删除快照文件。maxTTL 为当前的会话时长上限，

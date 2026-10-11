@@ -241,7 +241,7 @@ server {
 - `config.json` —— 全部配置（含 AK/SK、SMTP 密码，注意保管）
 - `audit.log` —— 操作审计日志
 
-服务停止期间还会有 `sessions.json`（登录会话快照，启动后即删除），无需备份。
+服务停止期间还会有隐藏文件 `.session`（登录会话快照，权限 0600，启动后即删除），无需备份。
 v1.7.1 及以前版本留下的 `secret` 文件已不再使用，可以删除。
 
 ```bash
@@ -263,7 +263,7 @@ sudo systemctl start goweb
 会话机制与灰度发版建议详见 [登录鉴权与会话](auth.md)。
 
 **回滚**：换回旧版二进制重启即可（建议升级前保留旧二进制为 `goweb.bak`）。
-回滚到 v1.7.1 及以前版本时，先删除数据目录中的 `sessions.json`（如果存在）再启动。
+回滚到 v1.7.1 及以前版本时，先删除数据目录中的 `.session`（如果存在）再启动。
 Docker 方式则 load 旧版本镜像后重新 `docker run` / 修改 compose 中的 tag。
 
 ---

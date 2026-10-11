@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -90,22 +91,32 @@ func New(cfg *config.Store, opts Options) (*Server, error) {
 	return s, nil
 }
 
-// sessionFile 会话快照路径：优雅退出时写入，下次启动读回后立即删除。
+// sessionFile 会话快照路径：与 nops-query 一致，是固定的隐藏文件 .session（权限 0600），
+// 不做成配置项——它不是给人读写的，只是进程自己在重启之间传递状态。
+// 放在数据目录而非工作目录：systemd 服务启用了 ProtectSystem=strict，只有数据目录可写。
 func (s *Server) sessionFile() string {
+	return filepath.Join(s.cfg.DataDir(), ".session")
+}
+
+// legacySessionFile v1.8.0 使用的快照文件名。其中是有效的登录令牌，不应留在磁盘上。
+func (s *Server) legacySessionFile() string {
 	return filepath.Join(s.cfg.DataDir(), "sessions.json")
 }
 
 // restoreSessions 恢复上次优雅退出时保存的会话。快照不可信时一个都不恢复，
 // 用户重新登录即可，不影响服务启动。
 func (s *Server) restoreSessions() {
+	if err := os.Remove(s.legacySessionFile()); err == nil {
+		log.Printf("已删除 v1.8.0 遗留的会话快照 %s（其中的会话不再恢复）", s.legacySessionFile())
+	}
 	maxTTL := time.Duration(s.cfg.Get().SessionDurationHours()) * time.Hour
 	res, err := s.sessions.Restore(s.sessionFile(), maxTTL, func(e string) bool { return config.ValidateEmail(e) == nil })
 	switch {
 	case err != nil:
 		log.Printf("会话快照 %s 不可用，已丢弃，所有用户需要重新登录: %v", s.sessionFile(), err)
 	case res.Found:
-		log.Printf("已恢复 %d 个登录会话（%d 个已过期，跳过；快照保存于 %s）",
-			res.Restored, res.Expired, res.SavedAt.Local().Format("2006-01-02 15:04:05"))
+		log.Printf("已恢复 %d 个登录会话（%d 个已过期，跳过），保存于 %s",
+			res.Restored, res.Expired, res.SavedAt)
 	}
 }
 

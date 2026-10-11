@@ -59,8 +59,8 @@ func TestSessionsSurviveGracefulRestart(t *testing.T) {
 	if fi, err := os.Stat(snap); err != nil || fi.Mode().Perm() != 0o600 {
 		t.Fatalf("应生成 0600 的会话快照: %v", err)
 	}
-	if filepath.Dir(snap) != srv.cfg.DataDir() {
-		t.Fatal("快照应位于数据目录")
+	if filepath.Dir(snap) != srv.cfg.DataDir() || filepath.Base(snap) != ".session" {
+		t.Fatalf("快照应为数据目录下的隐藏文件 .session，实际 %s", snap)
 	}
 
 	// 模拟升级后的新进程：同一数据目录
@@ -97,5 +97,26 @@ func TestSessionRevokedWhenRemovedFromAllowList(t *testing.T) {
 	}
 	if loggedIn(t, srv, ck) {
 		t.Fatal("移出允许名单后应立即失去访问权限")
+	}
+}
+
+// v1.8.0 遗留的 sessions.json 含有效令牌：启动时删除，且不从中恢复会话
+func TestLegacySessionFileRemoved(t *testing.T) {
+	srv := newTestServer(t, Options{IgnoreEmail: true})
+	ck := login(t, srv, "user@test.com")
+	srv.SaveSessions()
+	if err := os.Rename(srv.sessionFile(), srv.legacySessionFile()); err != nil {
+		t.Fatal(err)
+	}
+
+	srv2, err := New(srv.cfg, Options{IgnoreEmail: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(srv.legacySessionFile()); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("遗留的 sessions.json 应在启动时删除")
+	}
+	if loggedIn(t, srv2, ck) {
+		t.Fatal("不应从遗留文件恢复会话")
 	}
 }

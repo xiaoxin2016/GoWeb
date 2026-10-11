@@ -61,7 +61,7 @@ func TestSessionExpiry(t *testing.T) {
 }
 
 func TestSessionSaveRestore(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sessions.json")
+	path := filepath.Join(t.TempDir(), ".session")
 	s := NewSessionStore()
 	tokA, expA, _ := s.Create("a@b.com", 2*time.Hour)
 	tokB, _, _ := s.Create("b@b.com", time.Hour)
@@ -107,7 +107,7 @@ func TestSessionSaveRestore(t *testing.T) {
 }
 
 func TestSessionSaveNoSessionsLeavesNoFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sessions.json")
+	path := filepath.Join(t.TempDir(), ".session")
 	if err := os.WriteFile(path, []byte("stale"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestSessionSaveNoSessionsLeavesNoFile(t *testing.T) {
 }
 
 func TestSessionRestoreSkipsExpired(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sessions.json")
+	path := filepath.Join(t.TempDir(), ".session")
 	writeSnap(t, path, 0o600, []sessionSnapItem{
 		{Token: strings.Repeat("a", 43), Email: "a@b.com", Expires: time.Now().Add(time.Hour).Unix()},
 		{Token: strings.Repeat("b", 43), Email: "b@b.com", Expires: time.Now().Add(-time.Hour).Unix()},
@@ -156,7 +156,7 @@ func TestSessionRestoreRejects(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), "sessions.json")
+			path := filepath.Join(t.TempDir(), ".session")
 			if tc.raw != "" {
 				if err := os.WriteFile(path, []byte(tc.raw), tc.perm); err != nil {
 					t.Fatal(err)
@@ -186,7 +186,7 @@ func TestSessionRestoreRejectsSymlink(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "elsewhere.json")
 	writeSnap(t, target, 0o600, []sessionSnapItem{{Token: strings.Repeat("a", 43), Email: "a@b.com", Expires: time.Now().Add(time.Hour).Unix()}})
-	link := filepath.Join(dir, "sessions.json")
+	link := filepath.Join(dir, ".session")
 	if err := os.Symlink(target, link); err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +201,7 @@ func TestSessionRestoreRejectsSymlink(t *testing.T) {
 
 func writeSnap(t *testing.T, path string, perm os.FileMode, items []sessionSnapItem) {
 	t.Helper()
-	data, err := json.Marshal(sessionSnapshot{SavedAt: time.Now(), Sessions: items})
+	data, err := json.Marshal(sessionSnapshot{SavedAt: time.Now().Format("2006-01-02 15:04:05"), Sessions: items})
 	if err != nil {
 		t.Fatal(err)
 	}
