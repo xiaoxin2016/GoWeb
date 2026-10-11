@@ -8,8 +8,10 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/xiaoxin2016/goweb/internal/audit"
 	"github.com/xiaoxin2016/goweb/internal/auth"
@@ -37,12 +39,13 @@ type Options struct {
 
 // Server 应用 HTTP 服务。
 type Server struct {
-	cfg   *config.Store
-	codes *auth.CodeManager
-	tpl   *template.Template
-	mux   *http.ServeMux
-	audit *audit.Logger
-	opts  Options
+	cfg      *config.Store
+	codes    *auth.CodeManager
+	sessions *auth.SessionStore
+	tpl      *template.Template
+	mux      *http.ServeMux
+	audit    *audit.Logger
+	opts     Options
 
 	lists listCache // 目录列表短期缓存，供翻页与搜索复用
 
@@ -73,16 +76,49 @@ func New(cfg *config.Store, opts Options) (*Server, error) {
 	auditLog.Configure(cfg.Get().Syslog)
 
 	s := &Server{
-		cfg:   cfg,
-		codes: auth.NewCodeManager(),
-		tpl:   tpl,
-		mux:   http.NewServeMux(),
-		audit: auditLog,
-		opts:  opts,
-		s3rev: -1,
+		cfg:      cfg,
+		codes:    auth.NewCodeManager(),
+		sessions: auth.NewSessionStore(),
+		tpl:      tpl,
+		mux:      http.NewServeMux(),
+		audit:    auditLog,
+		opts:     opts,
+		s3rev:    -1,
 	}
+	s.restoreSessions()
 	s.routes()
 	return s, nil
+}
+
+// sessionFile 会话快照路径：优雅退出时写入，下次启动读回后立即删除。
+func (s *Server) sessionFile() string {
+	return filepath.Join(s.cfg.DataDir(), "sessions.json")
+}
+
+// restoreSessions 恢复上次优雅退出时保存的会话。快照不可信时一个都不恢复，
+// 用户重新登录即可，不影响服务启动。
+func (s *Server) restoreSessions() {
+	maxTTL := time.Duration(s.cfg.Get().SessionDurationHours()) * time.Hour
+	res, err := s.sessions.Restore(s.sessionFile(), maxTTL, func(e string) bool { return config.ValidateEmail(e) == nil })
+	switch {
+	case err != nil:
+		log.Printf("会话快照 %s 不可用，已丢弃，所有用户需要重新登录: %v", s.sessionFile(), err)
+	case res.Found:
+		log.Printf("已恢复 %d 个登录会话（%d 个已过期，跳过；快照保存于 %s）",
+			res.Restored, res.Expired, res.SavedAt.Local().Format("2006-01-02 15:04:05"))
+	}
+}
+
+// SaveSessions 把仍然有效的会话写入快照文件。应在 HTTP 服务停止接收请求后、
+// 进程退出前调用（见 main.go 的优雅退出流程）。
+func (s *Server) SaveSessions() {
+	n, err := s.sessions.Save(s.sessionFile())
+	switch {
+	case err != nil:
+		log.Printf("保存会话快照失败，重启后用户需要重新登录: %v", err)
+	case n > 0:
+		log.Printf("已保存 %d 个登录会话，重启后自动恢复", n)
+	}
 }
 
 // auditLog 记录一条审计事件。
@@ -225,7 +261,7 @@ func (s *Server) currentUser(r *http.Request) string {
 	if err != nil {
 		return ""
 	}
-	email, ok := auth.ParseToken(s.cfg.Secret(), c.Value)
+	email, ok := s.sessions.Lookup(c.Value)
 	if !ok || !s.cfg.Get().IsAllowed(email) {
 		return ""
 	}
@@ -303,7 +339,7 @@ func (s *Server) requesterDesc(r *http.Request) string {
 	if err != nil {
 		return "未登录（无会话 Cookie）"
 	}
-	email, ok := auth.ParseToken(s.cfg.Secret(), c.Value)
+	email, ok := s.sessions.Lookup(c.Value)
 	if !ok {
 		return "会话令牌无效或已过期"
 	}

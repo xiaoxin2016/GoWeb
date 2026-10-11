@@ -1,17 +1,11 @@
-// Package auth 实现邮箱验证码管理与会话令牌的签发/校验。
-// 会话令牌为 HMAC-SHA256 签名的无状态令牌，服务重启后依然有效。
+// Package auth 实现邮箱验证码管理与登录会话（见 session.go）。
 package auth
 
 import (
-	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/subtle"
-	"encoding/base64"
 	"errors"
-	"fmt"
 	"math/big"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -158,43 +152,4 @@ func randomDigits(n int) (string, error) {
 		b.WriteByte(byte('0' + d.Int64()))
 	}
 	return b.String(), nil
-}
-
-// SignToken 签发会话令牌，内容为 邮箱|过期时间。
-func SignToken(secret []byte, email string, ttl time.Duration) string {
-	payload := fmt.Sprintf("%s|%d", normalize(email), time.Now().Add(ttl).Unix())
-	mac := hmac.New(sha256.New, secret)
-	mac.Write([]byte(payload))
-	return base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." +
-		base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
-}
-
-// ParseToken 校验令牌，返回其中的邮箱地址。
-func ParseToken(secret []byte, token string) (string, bool) {
-	part := strings.SplitN(token, ".", 2)
-	if len(part) != 2 {
-		return "", false
-	}
-	payload, err := base64.RawURLEncoding.DecodeString(part[0])
-	if err != nil {
-		return "", false
-	}
-	sig, err := base64.RawURLEncoding.DecodeString(part[1])
-	if err != nil {
-		return "", false
-	}
-	mac := hmac.New(sha256.New, secret)
-	mac.Write(payload)
-	if !hmac.Equal(sig, mac.Sum(nil)) {
-		return "", false
-	}
-	fields := strings.SplitN(string(payload), "|", 2)
-	if len(fields) != 2 {
-		return "", false
-	}
-	exp, err := strconv.ParseInt(fields[1], 10, 64)
-	if err != nil || time.Now().Unix() > exp {
-		return "", false
-	}
-	return fields[0], true
 }

@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/xiaoxin2016/goweb/internal/auth"
 	"github.com/xiaoxin2016/goweb/internal/config"
 	"github.com/xiaoxin2016/goweb/internal/mailer"
 )
@@ -131,13 +130,21 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ttl := time.Duration(cfg.SessionDurationHours()) * time.Hour
-	token := auth.SignToken(s.cfg.Secret(), email, ttl)
+	token, _, err := s.sessions.Create(email, ttl)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, errors.New("创建会话失败，请重试"))
+		return
+	}
 	s.setSession(w, r, token, int(ttl.Seconds()))
 	log.Printf("用户 %s 登录成功", email)
 	writeJSON(w, http.StatusOK, map[string]any{"email": email, "admin": cfg.IsAdmin(email)})
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	// 服务端作废会话：仅清浏览器 Cookie 的话，令牌被他人拿到后在到期前仍然可用
+	if c, err := r.Cookie(sessionCookie); err == nil {
+		s.sessions.Delete(c.Value)
+	}
 	s.setSession(w, r, "", -1)
 	http.Redirect(w, r, "/login", http.StatusFound)
 }

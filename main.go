@@ -1,10 +1,15 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/xiaoxin2016/goweb/internal/config"
 	"github.com/xiaoxin2016/goweb/internal/server"
@@ -57,9 +62,45 @@ func main() {
 	if len(store.Get().Auth.AdminEmails) == 0 {
 		log.Printf("首次运行：请访问 http://localhost%s/console 完成初始化配置", addr)
 	}
-	if err := http.ListenAndServe(addr, srv); err != nil {
-		log.Fatal(err)
+	serve(&http.Server{Addr: addr, Handler: srv}, srv)
+}
+
+// shutdownGrace 收到退出信号后，等待在途请求收尾的最长时间。
+// 必须明显短于外部的强杀时限，否则来不及保存会话：docker stop 默认 10 秒后
+// 发送 SIGKILL，systemd 的 TimeoutStopSec 默认 90 秒。
+const shutdownGrace = 5 * time.Second
+
+// serve 启动 HTTP 服务并等待退出信号。
+//
+// 收到 SIGTERM / SIGINT（systemctl stop/restart、docker stop、Ctrl+C）时：
+// 停止接收新请求 → 给在途请求最多 shutdownGrace 收尾 → 把仍然有效的会话写入
+// 数据目录的快照，下次启动自动恢复，升级与灰度发版不会把用户踢回登录页。
+// kill -9 不给进程执行任何代码的机会，那种情况下没有快照，所有人需要重新登录。
+func serve(hs *http.Server, srv *server.Server) {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- hs.ListenAndServe() }()
+
+	select {
+	case err := <-errCh:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatal(err)
+		}
+		return
+	case <-ctx.Done():
 	}
+
+	log.Print("收到退出信号，正在停止服务…")
+	shutCtx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
+	defer cancel()
+	if err := hs.Shutdown(shutCtx); err != nil {
+		// 大文件上传/下载可能还没结束：到时即中断，不影响随后保存会话
+		log.Printf("等待在途请求结束超时，已中断剩余连接: %v", err)
+	}
+	srv.SaveSessions()
+	log.Print("已退出")
 }
 
 func getenv(key, def string) string {

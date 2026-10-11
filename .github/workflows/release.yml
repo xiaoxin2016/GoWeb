@@ -51,12 +51,12 @@ jobs:
             CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build \
               -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
               -o "build/${name}${ext}" .
-            # 打包：附带 README、离线部署手册与一键安装脚本
+            # 打包：附带 README、文档（离线部署手册、登录鉴权与会话）与一键安装脚本
             local stage="stage/goweb-${VERSION}-${os}-${arch}"
             mkdir -p "$stage/docs"
             cp "build/${name}${ext}" "$stage/goweb${ext}"
             cp README.md install.sh "$stage/"
-            cp docs/offline-deploy.md "$stage/docs/"
+            cp docs/offline-deploy.md docs/auth.md "$stage/docs/"
             chmod +x "$stage/install.sh" "$stage/goweb${ext}"
             if [ "$os" = "windows" ]; then
               (cd stage && zip -qr "../dist/goweb-${VERSION}-${os}-${arch}.zip" "goweb-${VERSION}-${os}-${arch}")
@@ -107,7 +107,8 @@ jobs:
           启动后访问 `http://<服务器IP>:8080/console` 完成初始化配置
           （对象存储、SMTP 邮件服务、管理员邮箱）。
 
-          详细说明见压缩包内的 `README.md`，内网离线部署见 `docs/offline-deploy.md`。
+          详细说明见压缩包内的 `README.md`，内网离线部署见 `docs/offline-deploy.md`，
+          登录会话、升级不掉线与灰度发版见 `docs/auth.md`。
 
           ### 下载说明
 

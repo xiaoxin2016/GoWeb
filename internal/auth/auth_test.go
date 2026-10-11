@@ -2,7 +2,6 @@ package auth
 
 import (
 	"testing"
-	"time"
 )
 
 func TestCodeIssueVerify(t *testing.T) {
@@ -35,29 +34,6 @@ func TestCodeResendLimit(t *testing.T) {
 	}
 	if _, err := m.Issue("a@b.com"); err != ErrTooFrequent {
 		t.Fatalf("一分钟内重发应被拒绝, got %v", err)
-	}
-}
-
-func TestToken(t *testing.T) {
-	secret := []byte("0123456789abcdef0123456789abcdef")
-	tok := SignToken(secret, "User@Example.com", time.Hour)
-
-	email, ok := ParseToken(secret, tok)
-	if !ok || email != "user@example.com" {
-		t.Fatalf("ParseToken = %q, %v", email, ok)
-	}
-	// 篡改令牌
-	if _, ok := ParseToken(secret, tok+"x"); ok {
-		t.Fatal("篡改后的令牌不应通过")
-	}
-	// 错误密钥
-	if _, ok := ParseToken([]byte("another-secret-another-secret-32"), tok); ok {
-		t.Fatal("错误密钥不应通过")
-	}
-	// 已过期
-	expired := SignToken(secret, "a@b.com", -time.Minute)
-	if _, ok := ParseToken(secret, expired); ok {
-		t.Fatal("过期令牌不应通过")
 	}
 }
 

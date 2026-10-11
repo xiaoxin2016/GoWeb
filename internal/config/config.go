@@ -3,7 +3,6 @@
 package config
 
 import (
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -358,7 +357,6 @@ type Store struct {
 	path    string
 	dataDir string
 	cfg     Config
-	secret  []byte
 	rev     int64 // 每次保存自增，用于让缓存的 S3 客户端失效
 }
 
@@ -366,7 +364,6 @@ type Store struct {
 func (s *Store) DataDir() string { return s.dataDir }
 
 // Load 从数据目录加载配置；目录或文件不存在时会自动创建。
-// 同时加载（或生成）用于签发会话令牌的密钥。
 func Load(dataDir string) (*Store, error) {
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return nil, fmt.Errorf("创建数据目录: %w", err)
@@ -382,18 +379,6 @@ func Load(dataDir string) (*Store, error) {
 		return nil, err
 	}
 
-	secretPath := filepath.Join(dataDir, "secret")
-	if raw, err := os.ReadFile(secretPath); err == nil && len(raw) >= 32 {
-		s.secret = raw
-	} else {
-		s.secret = make([]byte, 32)
-		if _, err := rand.Read(s.secret); err != nil {
-			return nil, err
-		}
-		if err := os.WriteFile(secretPath, s.secret, 0o600); err != nil {
-			return nil, fmt.Errorf("写入密钥文件: %w", err)
-		}
-	}
 	return s, nil
 }
 
@@ -403,9 +388,6 @@ func (s *Store) Get() Config {
 	defer s.mu.RUnlock()
 	return s.cfg
 }
-
-// Secret 返回会话签名密钥。
-func (s *Store) Secret() []byte { return s.secret }
 
 // Rev 返回配置修订号。
 func (s *Store) Rev() int64 {
